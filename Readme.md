@@ -1,14 +1,15 @@
 # Aegis — AI-Powered Parametric Wage Protection for Gig Workers
 
 > **Guidewire DEVTrails 2026 | Phase 1 Submission**
-> Persona: Food Delivery Partners (Zomato / Swiggy) · City: Chennai
+> Persona: Food Delivery
+> Partners (Zomato / Swiggy) · City: Chennai
 > Platform: Mobile-first (Flutter) · Architecture: B2C with Platform Data Integration
 
 ---
 
 ## 1. The Problem
 
-India's food delivery partners earn only when they ride. A single rain event, a red-alert pollution day, or a sudden curfew can wipe out an entire dinner rush — with zero recourse.
+India's food delivery partners earn only when they ride. A single rain event, a red-alert pollution day, or a sudden curfew can wipe out an entire dinner rush - with zero recourse.
 
 **Meet Shiva, 24, T. Nagar, Chennai.**
 He delivers for Zomato full-time, averaging ₹700–₹1,000/day across 8–10 hours. His peak windows are lunch (12–2 PM) and dinner (7–10 PM). During Chennai's northeast monsoon season (October–December), a single flooded evening costs him ₹400–₹600 with no way to recover it. Chennai also faces intense summer heat (April–June regularly exceeding 40°C) and cyclone threats from the Bay of Bengal. He has no insurance, no sick pay, and no employer. When disruption hits, he absorbs 100% of the loss.
@@ -26,7 +27,7 @@ He delivers for Zomato full-time, averaging ₹700–₹1,000/day across 8–10 
 
 ---
 
-## 2. Solution — Aegis
+## 2. Solution - Aegis
 
 Aegis is an **AI-enabled parametric insurance platform** that protects food delivery partners from income loss caused by external disruptions. It replaces slow, manual claim insurance with a **zero-touch, event-driven payout system** that works silently in the background once a worker signs up.
 
@@ -55,8 +56,8 @@ Mock Platform APIs (Zomato/Swiggy)     External APIs (OpenWeatherMap, CPCB, IMD)
 
 A payout fires only when **both gates pass**. No exceptions.
 
-**Gate 1 — External Disruption Signal** (confirms a qualifying event is occurring in the worker's zone)
-**Gate 2 — Business Impact Signal** (confirms real income loss is happening, not just bad weather)
+**Gate 1 - External Disruption Signal** (confirms a qualifying event is occurring in the worker's zone)
+**Gate 2 - Business Impact Signal** (confirms real income loss is happening, not just bad weather)
 
 ### Trigger Table
 
@@ -192,91 +193,52 @@ A flagged claim is **held, never silently rejected**. Workers are notified immed
 ---
 
 ## 6. Fraud Detection & Anti-Spoofing
-
+ 
 > *"A claim is trusted only when location, behavior, and activity signals consistently align."*
-
-Aegis uses a **three-layer fraud detection system**. Each layer catches a different class of fraud. A claim must pass all three before a payout fires.
-
----
-
-### Layer 1 — Multi-Factor Behavioral Analysis (Isolation Forest)
-
-Every claim is scored by an **Isolation Forest** anomaly detection model that evaluates five independent behavioral signals simultaneously:
-
-| Signal | What Is Checked | Fraud Indicator |
-|---|---|---|
-| GPS Consistency | Continuous, realistic location tracking | Teleportation jumps, perfectly static coordinates |
-| Movement Pattern | Physical movement via GPS drift over time | Zero movement for 2+ hrs during "active" session |
-| Order Activity | Delivery engagement during disruption window | No orders accepted/completed despite being "online" |
-| Device Fingerprint | OS, hardware hash, session ID consistency | Multiple accounts on one device, session cloning |
-| Behavioral Anomaly | Login patterns, claim frequency, timing | Sudden logins only during disruption windows |
-
-**How Isolation Forest works in this context:**
-The model is trained on historical patterns of genuine worker behavior during disruptions. When a claim arrives, it scores how "isolated" (unusual) that claim's signal combination is compared to the baseline. A worker who goes offline during rain, has no orders, and was last seen in the affected zone — that's a normal pattern. A worker whose GPS is static, device is flagged, and suddenly files 3 claims in one hour — that isolates immediately.
-
----
-
-### Layer 2 — Image × GPS Anti-Spoofing (CNN + NetVLAD)
-
-This is Aegis's **key differentiator** against GPS spoofing — the most common fraud vector in location-based insurance.
-
-GPS coordinates alone can be faked in under 60 seconds using freely available spoofing apps. Aegis defends against this by requiring a **real-time photo** for flagged or high-value claims, then cross-verifying the image's geographic zone against the GPS-reported zone using two AI models in sequence:
-
+ 
+Aegis uses a **three-layer fraud detection system**. A claim must pass all three before a payout fires.
+ 
+### Layer 1 - Multi-Factor Behavioral Analysis (Isolation Forest)
+ 
+An **Isolation Forest** model scores every claim across five signals simultaneously:
+ 
+| Signal | Fraud Indicator |
+|---|---|
+| GPS Consistency | Teleportation jumps or perfectly static coordinates |
+| Movement Pattern | Zero movement for 2+ hrs during an "active" session |
+| Order Activity | No orders accepted despite being "online" |
+| Device Fingerprint | Multiple accounts on one device |
+| Behavioral Anomaly | Logins only during disruption windows |
+ 
+Unusual combinations isolate immediately — a genuine stranded worker produces a normal pattern; a fraudster does not.
+ 
+### Layer 2 - Image × GPS Anti-Spoofing (CNN + NetVLAD)
+ 
+GPS can be faked in seconds. Aegis cross-verifies a **live camera photo** against the GPS zone using two models:
+ 
 ```
-Step 1 — Worker uploads real-time photo during claim event
-         (captured via Flutter camera — no gallery upload allowed)
-         ↓
-Step 2 — CNN Image Classifier analyzes the photo
-         Extracts: environment type, weather cues, landmark features,
-         road/building patterns, lighting conditions
-         ↓
-Step 3 — NetVLAD Place Recognition maps extracted features
-         to a probable geographic zone (neighborhood-level precision)
-         ↓
-Step 4 — Zone Engine compares:
-         GPS Zone = Image Zone  →  ✔ Location Verified
-         GPS Zone ≠ Image Zone  →  ❌ Mismatch — claim flagged
+Live photo captured (no gallery uploads allowed)
+    → CNN extracts environment, weather cues, landmarks
+    → NetVLAD maps image to geographic zone
+    → GPS Zone = Image Zone  →  ✔ Verified
+    → GPS Zone ≠ Image Zone  →  ❌ Flagged
 ```
-
-**Why NetVLAD specifically:**
-NetVLAD is a visual place recognition model trained to match images to geographic locations using aggregate local descriptors — it works even in poor lighting, rain, or partial occlusion (exactly the conditions during a disruption). It is far more robust than simple landmark detection for real-world delivery zone verification.
-
-**Anti-spoofing hardening:**
-- Photo must be taken live via app camera — gallery images are rejected
-- EXIF metadata timestamp is checked against claim event time (±10 minute tolerance)
-- Image similarity score must exceed confidence threshold — blurred or recycled images are rejected
-- Same image hash cannot be reused across claims
-
----
-
-### Layer 3 — Network-Level Fraud Ring Detection (GNN — Phase 3)
-
-Individual fraud checks catch individual bad actors. Coordinated fraud rings — where multiple workers collude to fake disruption claims simultaneously — require a different approach.
-
-A **Graph Neural Network (GNN)** models every worker as a node and their shared signals (same device, same GPS cluster, same claim timing, same image hash) as edges. A fraud ring appears as an unusually dense cluster of connected nodes all filing claims within a short window.
-
-```
-Normal pattern:   Workers spread across city → sparse graph → no flag
-Fraud ring:       20 workers, same device family, same zone, claims within
-                  15 minutes of each other → dense cluster → zone frozen
-                  → all claims held for manual review
-```
-
-This runs as a batch process every hour in Phase 3, with real-time alerting when cluster density exceeds threshold.
-
----
-
-### Fraud Score & Escalation Path
-
-All three layers feed a composite fraud score (0.0 – 1.0):
-
-| Score | Risk Level | Action |
-|---|---|---|
-| < 0.3 | Low | Auto-approved → instant UPI payout |
-| 0.3 – 0.7 | Medium | Hold → secondary verification → resolved within 4 hours |
-| > 0.7 | High | Blocked → admin alert → manual review → worker notified with reason |
-
-**Worker protection:** A flagged claim is always held — never silently rejected. Workers receive an in-app notification explaining why their claim is under review and can appeal within 48 hours. Fraud score resets after 30 clean days.
+ 
+**Hardening:** EXIF timestamp checked, recycled images rejected, same image hash cannot be reused.
+ 
+### Layer 3 - Fraud Ring Detection (GNN — Phase 3)
+ 
+A **Graph Neural Network** models workers as nodes and shared signals (device, GPS cluster, claim timing) as edges. A coordinated ring appears as a dense cluster — all claims from that zone are frozen and reviewed together.
+ 
+### Fraud Score & Escalation
+ 
+| Score | Action |
+|---|---|
+| < 0.3 | Auto-approved → instant UPI payout |
+| 0.3 – 0.7 | Hold → resolved within 4 hours |
+| > 0.7 | Blocked → admin review → worker notified |
+ 
+A flagged claim is always held — never silently rejected. Workers can appeal within 48 hours. Score resets after 30 clean days.
 
 ---
 
@@ -380,91 +342,62 @@ sequenceDiagram
 ---
 
 ## 9. Adversarial Defense & Anti-Spoofing Strategy
-
-> 🚨 **Market Crash Response — Phase 1 Final 24 Hours**
-> A syndicate of 500 delivery workers in a tier-1 city is using GPS-spoofing apps to fake locations, trigger mass false payouts, and drain the liquidity pool. Simple GPS verification is obsolete. Here is how Aegis catches them — without punishing honest workers.
-
+ 
+> 🚨 **Market Crash Response - Phase 1 Final 24 Hours**
+> A syndicate of 500 workers is using GPS-spoofing apps to fake locations, trigger false payouts, and drain the liquidity pool. Here is how Aegis catches them — without punishing honest workers.
+ 
+500 workers coordinating via Telegram spoof their GPS into a red-alert zone. A naive system pays them all. Aegis does not use basic GPS checks — here is why this attack fails.
+ 
 ---
-
-### The Attack Being Defended Against
-
-500 workers, coordinating via Telegram, are sitting at home while spoofing their GPS to place themselves inside a red-alert weather zone. They appear "online and in the zone" to a basic GPS check — and a naive parametric system pays them all out.
-
-Aegis does not use basic GPS checks. Here is why this attack fails against Aegis's architecture.
-
----
-
-### Requirement 1 — Differentiating a Genuine Worker from a GPS Spoofer
-
-A real delivery partner stuck in a flood zone behaves in a specific, measurable way. A fraudster sitting at home faking GPS does not — no matter how good their spoofing app is.
-
-Aegis cross-validates **six independent signals** that a spoofing app cannot simultaneously fake:
-
-| Signal | Genuine Stranded Worker | GPS Spoofer at Home |
+ 
+### Requirement 1 - Genuine Worker vs GPS Spoofer
+ 
+Aegis cross-validates **six independent signals** a spoofing app cannot simultaneously fake:
+ 
+| Signal | Genuine Worker | Spoofer at Home |
 |---|---|---|
-| GPS coordinates | Inside affected zone | Faked inside zone ✓ (easy) |
-| Movement pattern | Realistic drift — stopped at a location, attempted movement, slow speed | Perfectly static or unnaturally smooth — no real movement physics |
-| Device network | Connected to cell towers consistent with the claimed zone | Cell tower data resolves to a different neighborhood or home location |
-| Order activity | Last orders attempted in the zone before disruption hit | No order history in that zone for the past 48 hours |
-| Image × GPS match | Real-time photo shows flooded roads, rain, matching environment | Photo shows indoor environment, dry surroundings, or recycled image |
-| App behavior | Online continuously since before disruption started | App opened specifically during the disruption window |
-
-A spoofer can fake GPS. They cannot simultaneously fake cell tower data, movement physics, order history, a real-time outdoor photo, and continuous pre-disruption app activity. **All six signals must align for a payout to fire.**
-
+| GPS coordinates | Inside affected zone | Faked ✓ (easy) |
+| Movement pattern | Realistic drift, slow speed | Perfectly static or unnatural |
+| Device network | Cell towers match claimed zone | Towers resolve to home location |
+| Order activity | Orders attempted in zone before disruption | No zone order history in 48 hours |
+| Image × GPS match | Photo shows flooded roads, rain | Photo shows indoors or recycled image |
+| App behavior | Online before disruption started | App opened only during disruption window |
+ 
+**All six signals must align for a payout to fire.**
+ 
 ---
-
-### Requirement 2 — Data Points Used to Detect a Coordinated Fraud Ring
-
-Individual checks catch individual fraudsters. The Telegram syndicate is a **coordinated ring** — which requires pool-level detection.
-
-Aegis's GNN (Graph Neural Network) models every worker as a node. Shared signals between workers become edges. A fraud ring is a dense cluster.
-
-**Signals monitored for ring detection:**
-
-| Data Point | What It Reveals |
+ 
+### Requirement 2 - Detecting a Coordinated Fraud Ring
+ 
+Aegis's GNN models every worker as a node — shared signals become edges. A ring is a dense cluster.
+ 
+| Signal | What It Reveals |
 |---|---|
-| Claim timestamp clustering | 500 claims filed within a 15-minute window = coordinated, not organic |
-| Device family overlap | Multiple workers sharing the same device manufacturer batch or OS build = shared device pool |
-| GPS coordinate clustering | All 500 spoofed locations suspiciously concentrated in one small sub-zone |
-| Image hash similarity | Recycled or near-identical photos submitted across multiple accounts |
-| Telegram/social signal (Phase 3) | Spike in claims correlates with known coordination patterns |
-| Historical zone claim rate | Zone suddenly shows 40× its normal claim rate with no neighbouring zone impact |
-
-**Response when ring is detected:**
-```
-GNN detects dense fraud cluster in zone
-    → All claims from that zone in past 2 hours → FROZEN
-    → Admin dashboard alert fires immediately
-    → Zone flagged for enhanced verification for next 48 hours
-    → Individual claim scores re-evaluated with elevated suspicion threshold
-```
-
-The ring is caught as a group, not one worker at a time.
-
+| Claim timestamp clustering | 500 claims in 15 minutes = coordinated |
+| Device family overlap | Shared device pool across accounts |
+| GPS coordinate clustering | All locations in one tiny sub-zone |
+| Image hash similarity | Recycled photos across accounts |
+| Historical zone claim rate | Zone showing 40× its normal claim rate |
+ 
+When a ring is detected → all zone claims frozen → admin alerted → zone flagged for 48 hours.
+ 
 ---
-
-### Requirement 3 — UX Balance: Protecting Honest Workers from False Flags
-
-The biggest risk in anti-fraud design is punishing innocent workers. Shiva may have a genuine GPS glitch during a storm — weak signal, network drop, brief location jump. Aegis handles this without penalising him.
-
-**The core principle: freeze, never silently reject.**
-
+ 
+### Requirement 3 - Protecting Honest Workers from False Flags
+ 
+**Core principle: freeze, never silently reject.**
+ 
 | Scenario | What Aegis Does |
 |---|---|
-| GPS signal drops briefly due to bad weather | Movement history + order activity from before the drop confirm genuine presence — auto-approved |
-| Image upload fails due to poor connectivity | Worker is given a 30-minute retry window before the claim is flagged |
-| Fraud score lands in medium band (0.3–0.7) | Claim is held, not rejected — worker receives in-app notification within 5 minutes explaining the hold |
-| Claim is flagged for manual review | Admin reviews raw signal data within 4 hours — worker is notified of outcome either way |
-| Worker disputes a held payout | In-app appeal button → 24-hour manual review → raw API evidence shown to reviewer |
-| False positive resolved | Payout released immediately + fraud score reset |
-
-**What Aegis never does:**
-- Never silently rejects a claim without notifying the worker
-- Never permanently flags a worker on a single suspicious event — score resets after 30 clean days
-- Never requires a worker to visit an office or call a helpline — everything is in-app
-
-**The honest worker test:**
-Shiva is genuinely stuck in the T. Nagar flood. His GPS has a brief signal drop. His image uploads slowly. His fraud score briefly touches 0.35 — medium band. His claim is held for 4 hours while the system verifies his pre-disruption order history and movement trail. It clears. His ₹480 is credited. He received two in-app notifications during the process and never had to do anything except wait.
+| GPS drops briefly in bad weather | Pre-disruption order history confirms presence — auto-approved |
+| Image upload fails | 30-minute retry window before flagging |
+| Medium fraud score (0.3–0.7) | Claim held — in-app notification within 5 minutes |
+| Manual review triggered | Resolved within 4 hours — worker notified either way |
+| Worker disputes payout | In-app appeal → 24-hour review → raw evidence shown |
+ 
+Never silently rejects. Never permanently flags on a single event. Everything handled in-app.
+ 
+**Honest worker test:** Shiva is stuck in the T. Nagar flood. His GPS drops briefly. Fraud score touches 0.35 — claim held for 4 hours, pre-disruption activity clears it. ₹480 credited. Two in-app notifications. Zero action required from Shiva.
 
 That is the experience Aegis is designed to deliver.
 
