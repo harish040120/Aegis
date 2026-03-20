@@ -570,9 +570,5 @@ Aegis ingests earnings, activity, and GPS data from both Zomato and Swiggy worke
 
 ---
 
-Youtube Video Link : [Click Here](https://youtu.be/Pzlo5yZmJCo)
-
----
-
 *Aegis — Parametric wage protection for Chennai's invisible delivery workforce.*
 *Phase 1 Submission · March 20, 2026*
