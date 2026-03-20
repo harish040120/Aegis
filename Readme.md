@@ -482,8 +482,9 @@ Aegis ingests earnings, activity, and GPS data from both Zomato and Swiggy worke
 | Nivaashini Thangaraj | Web + Data Engineer | Admin dashboard (React), data pipelines, risk scoring |
 | Abithi V B | QA + ML Engineer | Testing, validation, ML evaluation, fraud detection |
 
-**Institution:** [Your Institution], Chennai
-**Hackathon:** Guidewire DEVTrails 2026
+---
+
+Youtube Video Link : [Click Here](https://youtu.be/Pzlo5yZmJCo)
 
 ---
 
