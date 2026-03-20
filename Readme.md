@@ -234,7 +234,6 @@ Step 3 — NetVLAD Place Recognition maps extracted features
          to a probable geographic zone (neighborhood-level precision)
          ↓
 Step 4 — Zone Engine compares:
-
          GPS Zone = Image Zone  →  ✔ Location Verified
          GPS Zone ≠ Image Zone  →  ❌ Mismatch — claim flagged
 ```
@@ -283,15 +282,108 @@ All three layers feed a composite fraud score (0.0 – 1.0):
 
 ## 7. System Architecture
 
+> The Aegis system is structured across five decoupled layers — from real-time data ingestion through AI risk scoring, parametric trigger evaluation, multi-layer fraud validation, and automated UPI payout — ensuring each component can be updated or patched independently without affecting the rest of the pipeline.
+
 ![Aegis System Architecture](https://raw.githubusercontent.com/harish040120/Aegis/main/System_Architecture.png)
 
 ---
 
 ## 8. Process Flow
 
-> End-to-end flow from worker onboarding through KYC, trigger evaluation, dual-gate validation, fraud detection, and UPI payout.
+> End-to-end flow from worker onboarding through KYC, subscription, risk scoring, dual-gate trigger evaluation, multi-layer location and fraud verification, and automated UPI payout.
 
-![Aegis Process Flow](https://raw.githubusercontent.com/harish040120/Aegis/main/ProcessFlow.png)
+```mermaid
+sequenceDiagram
+    title Aegis — End-to-End Parametric Insurance Flow
+    actor User
+    participant App
+    participant Backend
+    participant RiskEngine as Risk Engine
+    participant TriggerEngine as Trigger Engine
+    participant LocationService as Location Service
+    participant ImageVerification as Image Verification
+    participant ZoneEngine as Zone Engine
+    participant FraudEngine as Fraud Engine
+    participant Payment
+
+    rect rgb(20, 40, 80)
+        Note over User,Payment: User Onboarding
+        User->>App: Open App
+        App->>Backend: Check KYC status
+        Backend-->>App: KYC result
+        alt KYC not completed
+            App-->>User: Prompt to complete KYC
+        else KYC completed
+            App->>Backend: Check subscription status
+            Backend-->>App: Subscription result
+            alt Not subscribed
+                App-->>User: Show weekly plan and pricing
+                User->>App: Select plan and confirm deduction
+                App->>Backend: Activate weekly coverage
+            else Already subscribed
+                App->>Backend: Confirm active coverage
+            end
+        end
+    end
+
+    rect rgb(20, 60, 40)
+        Note over User,Payment: Risk Scoring and Trigger Evaluation
+        Backend->>RiskEngine: Compute weekly RiskScore
+        RiskEngine-->>Backend: RiskScore and RiskMultiplier
+        Backend->>Backend: Calculate weekly premium
+        loop Every 30 minutes
+            Backend->>TriggerEngine: Poll external APIs
+            TriggerEngine-->>Backend: Signal readings
+            alt Gate 1 FAILS - no external disruption
+                Backend-->>App: No disruption in your zone
+            else Gate 1 PASSES - disruption confirmed
+                TriggerEngine->>TriggerEngine: Check Gate 2
+                alt Gate 2 FAILS - no business impact
+                    Backend-->>App: Weather detected but no income impact
+                else Both Gates PASS
+                    Backend->>Backend: Calculate payout
+                end
+            end
+        end
+    end
+
+    rect rgb(60, 20, 60)
+        Note over User,Payment: Multi-Layer Location Verification
+        App->>Backend: Send GPS coordinates
+        Backend->>LocationService: Validate GPS geo-fencing
+        LocationService-->>Backend: GPS zone confirmed
+        App->>Backend: Upload real-time photo
+        Backend->>ImageVerification: Analyze image landmarks and weather cues
+        ImageVerification-->>Backend: Estimated geographic zone
+        Backend->>ZoneEngine: Compare GPS zone vs Image zone
+        ZoneEngine-->>Backend: Zone match result
+        alt Location mismatch
+            Backend-->>App: Location verification failed
+            App-->>User: Retry location or upload new image
+        else Location valid
+            Backend-->>App: Location confirmed
+        end
+    end
+
+    rect rgb(60, 30, 20)
+        Note over User,Payment: Fraud Detection and Payout
+        Backend->>FraudEngine: Analyze claim signals
+        Note right of FraudEngine: GPS consistency and movement<br/>Image vs GPS zone match<br/>Order activity in window<br/>Device fingerprint check<br/>Isolation Forest anomaly score
+        FraudEngine-->>Backend: Fraud risk score
+        alt Score above 0.7 - High risk
+            Backend-->>App: Payment under review
+            App-->>User: Validating payout - notified in 4 hours
+        else Score 0.3 to 0.7 - Medium risk
+            Backend-->>App: Secondary verification triggered
+            App-->>User: Please confirm your location details
+        else Score below 0.3 - No risk
+            Backend->>Payment: Initiate UPI payout
+            Payment-->>Backend: Payment success
+            Backend-->>App: Payment completed
+            App-->>User: Amount credited to your UPI wallet
+        end
+    end
+```
 
 ---
 
@@ -455,6 +547,8 @@ Aegis ingests earnings, activity, and GPS data from both Zomato and Swiggy worke
 - Persona research and scenario mapping
 - Parametric trigger and risk model design
 - Tech stack selection and mock API schema definition
+
+**Phase 1 Strategy Video:** [Watch on YouTube](https://youtu.be/Pzlo5yZmJCo)
 
 ### Phase 2 (March 21 – April 4) — Automation & Protection
 - Worker registration flow (simulated platform handshake)
