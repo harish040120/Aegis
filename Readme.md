@@ -1,9 +1,11 @@
 # Aegis — AI-Powered Parametric Wage Protection for Gig Workers
 
 > **Guidewire DEVTrails 2026 | Phase 1 Submission**
-> Team Name: Zero Noise Crew
-> Persona: Food Delivery
-> Partners (Zomato / Swiggy) · City: Chennai
+
+> **Team Name:** Zero Noise Crew
+
+> **Persona:** Food Delivery
+
 > Platform: Mobile-first (Flutter) · Architecture: B2C with Platform Data Integration
 
 ---
