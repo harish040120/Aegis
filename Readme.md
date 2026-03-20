@@ -304,8 +304,8 @@ sequenceDiagram
     participant Zone as Zone Engine
     participant Fraud as Fraud Engine
     participant Payment
-
-    Note over User,Payment: ── USER ONBOARDING ──
+ 
+    Note over User,Payment: USER ONBOARDING
     User->>App: Open App
     App->>Backend: Check KYC status
     Backend-->>App: KYC result
@@ -322,59 +322,60 @@ sequenceDiagram
             App->>Backend: Confirm active coverage
         end
     end
-
-    Note over User,Payment: ── RISK SCORING AND TRIGGER EVALUATION ──
-    Backend->>Risk: Compute weekly RiskScore
+ 
+    Note over User,Payment: RISK SCORING AND TRIGGER EVALUATION
+    Backend->>Risk: Compute weekly RiskScore - weather, AQI, order trends
     Risk-->>Backend: RiskScore and RiskMultiplier
-    Backend->>Backend: Calculate weekly premium
+    Backend->>Backend: Calculate weekly premium - BASE x RiskMultiplier x LoyaltyFactor x ZoneFactor
     loop Every 30 minutes
         Backend->>Trigger: Poll OpenWeatherMap, CPCB AQI, Platform API
         Trigger-->>Backend: Signal readings
         alt Gate 1 FAILS - no external disruption
             Backend-->>App: No disruption in your zone
         else Gate 1 PASSES - disruption confirmed
-            Trigger->>Trigger: Check Gate 2
+            Trigger->>Trigger: Check Gate 2 - order drop above 30% or earnings drop above 20%
             alt Gate 2 FAILS - no business impact
-                Backend-->>App: Weather detected but no income impact
+                Backend-->>App: Weather detected but no income impact confirmed
             else Both Gates PASS
-                Backend->>Backend: Calculate payout
+                Backend->>Backend: Calculate payout - Hourly Rate x Hours Lost x Trigger %
             end
         end
     end
-
-    Note over User,Payment: ── MULTI-LAYER LOCATION VERIFICATION ──
+ 
+    Note over User,Payment: MULTI-LAYER LOCATION VERIFICATION
     App->>Backend: Send GPS coordinates
-    Backend->>Location: Validate GPS geo-fencing
+    Backend->>Location: Validate GPS via geo-fencing
     Location-->>Backend: GPS zone confirmed
-    App->>Backend: Upload real-time photo
-    Backend->>Image: Analyze image landmarks and weather cues
+    App->>Backend: Upload real-time photo for flagged or high-value claims
+    Backend->>Image: Analyze image - landmarks, weather cues, environment
     Image-->>Backend: Estimated geographic zone
     Backend->>Zone: Compare GPS zone vs Image zone
     Zone-->>Backend: Zone match result
     alt Location mismatch
-        Backend-->>App: Location verification failed
+        Backend-->>App: Location verification failed - re-upload photo
         App-->>User: Retry location or upload new image
     else Location valid
         Backend-->>App: Location confirmed
     end
-
-    Note over User,Payment: ── FRAUD DETECTION AND PAYOUT ──
+ 
+    Note over User,Payment: FRAUD DETECTION AND PAYOUT
     Backend->>Fraud: Analyze claim signals
-    Note right of Fraud: GPS consistency and movement pattern, Image vs GPS zone match CNN+NetVLAD, Order activity in window, Device fingerprint, Isolation Forest score
+    Note right of Fraud: GPS consistency and movement pattern. Image vs GPS zone match via CNN and NetVLAD. Order activity during disruption window. Device fingerprint one device one policy. Behavioral anomaly score via Isolation Forest.
     Fraud-->>Backend: Fraud risk score
     alt Score above 0.7 - High risk
         Backend-->>App: Payment under review
-        App-->>User: Validating payout - notified in 4 hours
+        App-->>User: Validating your payout - notified within 4 hours
     else Score 0.3 to 0.7 - Medium risk
         Backend-->>App: Secondary verification triggered
         App-->>User: Please confirm your location details
     else Score below 0.3 - No risk
-        Backend->>Payment: Initiate UPI payout
+        Backend->>Payment: Initiate UPI payout via Razorpay
         Payment-->>Backend: Payment success
         Backend-->>App: Payment completed
         App-->>User: Amount credited to your UPI wallet
     end
 ```
+
 
 ---
 
