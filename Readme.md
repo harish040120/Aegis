@@ -54,6 +54,43 @@ Mock Platform APIs (Zomato/Swiggy)     External APIs (OpenWeatherMap, CPCB, IMD)
 - Direct app relationship means Aegis owns the worker data and trust, not the platform
 
 ---
+## Platform Choice — Mobile App vs Web App
+ 
+### Why We Chose a Mobile-First Approach
+ 
+Aegis is built as a **mobile-first application**, with a web dashboard reserved exclusively for admin and operations teams. This was not a default decision — it was a deliberate design choice rooted in who our users are and how they live.
+ 
+---
+ 
+### The Core Reasoning
+ 
+Ravi — our target user — does not sit at a desk. He is on a bike, on the road, in the rain. His only computer is his smartphone. When a disruption hits and a payout needs to happen, a web app is completely inaccessible to him. A mobile app is already in his pocket.
+ 
+---
+ 
+### What Each Platform Handles
+ 
+#### Mobile App — Flutter (Worker-Facing)
+The mobile app is the core product. It handles everything the worker interacts with:
+ 
+- KYC onboarding and Aadhaar verification
+- Weekly plan selection and UPI payment
+- Real-time disruption alerts via push notifications
+- Claim status tracking and payout confirmation
+- Photo upload for Tier 2 soft-flag verification
+- On-device telemetry (accelerometer, GPS, mock location detection) — critical for the anti-spoofing engine
+ 
+#### Web App — React.js (Admin-Facing Only)
+The web dashboard is built for insurance operations teams who work on desktop:
+ 
+- Live disruption monitoring and trigger status
+- Claims pipeline and fraud flag queue
+- Worker image upload verification panel
+- Financial metrics, loss ratio, and payout SLA tracking
+- AI prediction reports and zone-level risk heatmaps
+- Admin controls for policy management
+ 
+---
 
 ## 3. Parametric Trigger System
 
