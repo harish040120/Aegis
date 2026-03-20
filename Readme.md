@@ -294,94 +294,85 @@ All three layers feed a composite fraud score (0.0 – 1.0):
 
 ```mermaid
 sequenceDiagram
-    title Aegis — End-to-End Parametric Insurance Flow
     actor User
     participant App
     participant Backend
-    participant RiskEngine as Risk Engine
-    participant TriggerEngine as Trigger Engine
-    participant LocationService as Location Service
-    participant ImageVerification as Image Verification
-    participant ZoneEngine as Zone Engine
-    participant FraudEngine as Fraud Engine
+    participant Risk as Risk Engine
+    participant Trigger as Trigger Engine
+    participant Location as Location Service
+    participant Image as Image Verification
+    participant Zone as Zone Engine
+    participant Fraud as Fraud Engine
     participant Payment
 
-    rect rgb(20, 40, 80)
-        Note over User,Payment: User Onboarding
-        User->>App: Open App
-        App->>Backend: Check KYC status
-        Backend-->>App: KYC result
-        alt KYC not completed
-            App-->>User: Prompt to complete KYC
-        else KYC completed
-            App->>Backend: Check subscription status
-            Backend-->>App: Subscription result
-            alt Not subscribed
-                App-->>User: Show weekly plan and pricing
-                User->>App: Select plan and confirm deduction
-                App->>Backend: Activate weekly coverage
-            else Already subscribed
-                App->>Backend: Confirm active coverage
+    Note over User,Payment: ── USER ONBOARDING ──
+    User->>App: Open App
+    App->>Backend: Check KYC status
+    Backend-->>App: KYC result
+    alt KYC not completed
+        App-->>User: Prompt to complete KYC
+    else KYC completed
+        App->>Backend: Check subscription status
+        Backend-->>App: Subscription result
+        alt Not subscribed
+            App-->>User: Show weekly plan and pricing
+            User->>App: Select plan and confirm deduction
+            App->>Backend: Activate weekly coverage
+        else Already subscribed
+            App->>Backend: Confirm active coverage
+        end
+    end
+
+    Note over User,Payment: ── RISK SCORING AND TRIGGER EVALUATION ──
+    Backend->>Risk: Compute weekly RiskScore
+    Risk-->>Backend: RiskScore and RiskMultiplier
+    Backend->>Backend: Calculate weekly premium
+    loop Every 30 minutes
+        Backend->>Trigger: Poll OpenWeatherMap, CPCB AQI, Platform API
+        Trigger-->>Backend: Signal readings
+        alt Gate 1 FAILS - no external disruption
+            Backend-->>App: No disruption in your zone
+        else Gate 1 PASSES - disruption confirmed
+            Trigger->>Trigger: Check Gate 2
+            alt Gate 2 FAILS - no business impact
+                Backend-->>App: Weather detected but no income impact
+            else Both Gates PASS
+                Backend->>Backend: Calculate payout
             end
         end
     end
 
-    rect rgb(20, 60, 40)
-        Note over User,Payment: Risk Scoring and Trigger Evaluation
-        Backend->>RiskEngine: Compute weekly RiskScore
-        RiskEngine-->>Backend: RiskScore and RiskMultiplier
-        Backend->>Backend: Calculate weekly premium
-        loop Every 30 minutes
-            Backend->>TriggerEngine: Poll external APIs
-            TriggerEngine-->>Backend: Signal readings
-            alt Gate 1 FAILS - no external disruption
-                Backend-->>App: No disruption in your zone
-            else Gate 1 PASSES - disruption confirmed
-                TriggerEngine->>TriggerEngine: Check Gate 2
-                alt Gate 2 FAILS - no business impact
-                    Backend-->>App: Weather detected but no income impact
-                else Both Gates PASS
-                    Backend->>Backend: Calculate payout
-                end
-            end
-        end
+    Note over User,Payment: ── MULTI-LAYER LOCATION VERIFICATION ──
+    App->>Backend: Send GPS coordinates
+    Backend->>Location: Validate GPS geo-fencing
+    Location-->>Backend: GPS zone confirmed
+    App->>Backend: Upload real-time photo
+    Backend->>Image: Analyze image landmarks and weather cues
+    Image-->>Backend: Estimated geographic zone
+    Backend->>Zone: Compare GPS zone vs Image zone
+    Zone-->>Backend: Zone match result
+    alt Location mismatch
+        Backend-->>App: Location verification failed
+        App-->>User: Retry location or upload new image
+    else Location valid
+        Backend-->>App: Location confirmed
     end
 
-    rect rgb(60, 20, 60)
-        Note over User,Payment: Multi-Layer Location Verification
-        App->>Backend: Send GPS coordinates
-        Backend->>LocationService: Validate GPS geo-fencing
-        LocationService-->>Backend: GPS zone confirmed
-        App->>Backend: Upload real-time photo
-        Backend->>ImageVerification: Analyze image landmarks and weather cues
-        ImageVerification-->>Backend: Estimated geographic zone
-        Backend->>ZoneEngine: Compare GPS zone vs Image zone
-        ZoneEngine-->>Backend: Zone match result
-        alt Location mismatch
-            Backend-->>App: Location verification failed
-            App-->>User: Retry location or upload new image
-        else Location valid
-            Backend-->>App: Location confirmed
-        end
-    end
-
-    rect rgb(60, 30, 20)
-        Note over User,Payment: Fraud Detection and Payout
-        Backend->>FraudEngine: Analyze claim signals
-        Note right of FraudEngine: GPS consistency and movement<br/>Image vs GPS zone match<br/>Order activity in window<br/>Device fingerprint check<br/>Isolation Forest anomaly score
-        FraudEngine-->>Backend: Fraud risk score
-        alt Score above 0.7 - High risk
-            Backend-->>App: Payment under review
-            App-->>User: Validating payout - notified in 4 hours
-        else Score 0.3 to 0.7 - Medium risk
-            Backend-->>App: Secondary verification triggered
-            App-->>User: Please confirm your location details
-        else Score below 0.3 - No risk
-            Backend->>Payment: Initiate UPI payout
-            Payment-->>Backend: Payment success
-            Backend-->>App: Payment completed
-            App-->>User: Amount credited to your UPI wallet
-        end
+    Note over User,Payment: ── FRAUD DETECTION AND PAYOUT ──
+    Backend->>Fraud: Analyze claim signals
+    Note right of Fraud: GPS consistency and movement pattern, Image vs GPS zone match CNN+NetVLAD, Order activity in window, Device fingerprint, Isolation Forest score
+    Fraud-->>Backend: Fraud risk score
+    alt Score above 0.7 - High risk
+        Backend-->>App: Payment under review
+        App-->>User: Validating payout - notified in 4 hours
+    else Score 0.3 to 0.7 - Medium risk
+        Backend-->>App: Secondary verification triggered
+        App-->>User: Please confirm your location details
+    else Score below 0.3 - No risk
+        Backend->>Payment: Initiate UPI payout
+        Payment-->>Backend: Payment success
+        Backend-->>App: Payment completed
+        App-->>User: Amount credited to your UPI wallet
     end
 ```
 
