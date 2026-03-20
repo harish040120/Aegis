@@ -64,7 +64,7 @@ Aegis is built as a **mobile-first application**, with a web dashboard reserved 
  
 ### The Core Reasoning
  
-Ravi — our target user — does not sit at a desk. He is on a bike, on the road, in the rain. His only computer is his smartphone. When a disruption hits and a payout needs to happen, a web app is completely inaccessible to him. A mobile app is already in his pocket.
+Shiva — our target user — does not sit at a desk. He is on a bike, on the road, in the rain. His only computer is his smartphone. When a disruption hits and a payout needs to happen, a web app is completely inaccessible to him. A mobile app is already in his pocket.
  
 ---
  
