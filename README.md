@@ -1,6 +1,6 @@
 # Aegis — AI-Powered Parametric Wage Protection for Gig Workers
 
-> **Guidewire DEVTrails 2026 | Phase 1 Submission**
+> **Guidewire DEVTrails 2026 | Phase 2 Submission**
 
 > **Team Name:** Zero Noise Crew
 
