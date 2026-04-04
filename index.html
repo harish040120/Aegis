@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis — Gig Worker Insurance</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#185FA5;--blue-d:#0C447C;--blue-l:#E6F1FB;--blue-m:#378ADD;
+  --green:#27500A;--green-m:#3B6D11;--green-l:#EAF3DE;--green-a:#639922;
+  --red:#A32D2D;--red-l:#FCEBEB;--org:#854F0B;--org-l:#FAEEDA;
+  --navy:#0C1A3A;--navy2:#1E3A6E;--navy3:#4A6A9A;
+  --bg:#F4F5F8;--card:#fff;--bdr:#E8EAF0;--bdr2:#D3D1C7;
+  --tx:#2C2C2A;--tx2:#888780;--tx3:#444441;
+  --f:'Sora',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+html,body{height:100%;font-family:var(--f);background:#0a0a12;overflow:hidden;color:var(--tx)}
+
+/* ── ROLE SCREEN ── */
+#roleScreen{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;background:linear-gradient(135deg,#0a0a12 0%,#0c1a3a 100%);
+  z-index:200;transition:opacity .5s ease;
+}
+#roleScreen::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 60% 40% at 50% 50%,rgba(24,95,165,.15) 0%,transparent 70%);
+  pointer-events:none;
+}
+.role-logo{display:flex;align-items:center;gap:12px;margin-bottom:10px;animation:fadeUp .6s ease both}
+.role-logo-box{width:48px;height:48px;background:var(--blue);border-radius:14px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 30px rgba(24,95,165,.4)}
+.role-logo-box svg{width:26px;height:26px;fill:#E6F1FB}
+.role-brand{font-size:32px;font-weight:700;color:#fff;letter-spacing:-.5px}
+.role-tagline{font-size:13px;color:rgba(133,183,235,.7);margin-bottom:52px;animation:fadeUp .6s .1s ease both;letter-spacing:.04em}
+.role-label{font-size:11px;color:rgba(133,183,235,.5);text-transform:uppercase;letter-spacing:.1em;margin-bottom:20px;animation:fadeUp .6s .15s ease both}
+.role-cards{display:flex;gap:16px;animation:fadeUp .6s .2s ease both}
+.role-card{
+  width:210px;background:rgba(255,255,255,.04);backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:28px 22px 24px;
+  display:flex;flex-direction:column;align-items:center;gap:14px;cursor:pointer;
+  transition:all .25s ease;position:relative;overflow:hidden;
+}
+.role-card::after{content:'';position:absolute;inset:0;border-radius:20px;background:linear-gradient(135deg,rgba(255,255,255,.06),transparent);opacity:0;transition:opacity .25s}
+.role-card:hover{border-color:rgba(24,95,165,.5);background:rgba(24,95,165,.08);transform:translateY(-3px);box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.role-card:hover::after{opacity:1}
+.role-card.sel{border-color:var(--blue);background:rgba(24,95,165,.15);box-shadow:0 0 0 1px var(--blue),0 12px 40px rgba(24,95,165,.2)}
+.rc-icon{width:56px;height:56px;border-radius:16px;display:flex;align-items:center;justify-content:center}
+.rc-icon svg{width:28px;height:28px}
+.rc-title{font-size:16px;font-weight:600;color:#fff}
+.rc-desc{font-size:11px;color:rgba(133,183,235,.6);text-align:center;line-height:1.6}
+.role-cta{
+  margin-top:40px;background:var(--blue);color:#fff;border:none;
+  padding:16px 56px;border-radius:14px;font-size:14px;font-weight:600;
+  cursor:pointer;font-family:var(--f);transition:all .2s;
+  opacity:.35;pointer-events:none;letter-spacing:.02em;
+  animation:fadeUp .6s .3s ease both;
+  box-shadow:0 4px 20px rgba(24,95,165,.3);
+}
+.role-cta.on{opacity:1;pointer-events:all}
+.role-cta.on:hover{background:var(--blue-d);box-shadow:0 8px 30px rgba(24,95,165,.5);transform:translateY(-1px)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── PHONE SHELL ── */
+#phoneWrap{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#0a0a12 0%,#0c1a3a 100%);
+  opacity:0;pointer-events:none;transition:opacity .5s ease;
+}
+#phoneWrap.on{opacity:1;pointer-events:all}
+#phoneWrap::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 40% 40% at 50% 50%,rgba(24,95,165,.1) 0%,transparent 70%);
+  pointer-events:none;
+}
+.pshell{
+  width:375px;height:780px;background:#161628;border-radius:52px;
+  padding:6px;border:2px solid #252540;
+  box-shadow:0 40px 100px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.05);
+  position:relative;flex-shrink:0;
+}
+.pinner{width:100%;height:100%;background:#0D0D1F;border-radius:47px;overflow:hidden;display:flex;flex-direction:column}
+.notch-bar{height:34px;background:#0D0D1F;display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0}
+.notch{width:90px;height:20px;background:#161628;border-radius:0 0 14px 14px;position:absolute;top:0;left:50%;transform:translateX(-50%)}
+.statusbar{display:flex;justify-content:space-between;align-items:center;padding:0 22px;height:20px;flex-shrink:0}
+.stime{font-size:12px;font-weight:600;color:#fff;font-family:var(--mono)}
+.sico{display:flex;gap:5px;align-items:center}
+.sico svg{width:13px;height:13px;fill:#fff}
+
+/* screens container */
+.screens{flex:1;position:relative;overflow:hidden;display:flex;flex-direction:column}
+.view{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  transform:translateX(100%);
+  opacity:0;
+  pointer-events:none;
+  visibility:hidden;
+  transition:transform .32s cubic-bezier(.4,0,.2,1), opacity .32s ease;
+  will-change:transform,opacity;
+}
+.view.active{
+  transform:translateX(0);
+  opacity:1;
+  pointer-events:all;
+  visibility:visible;
+}
+.view.prev{
+  transform:translateX(-100%);
+  opacity:0;
+  pointer-events:none;
+  visibility:hidden;
+}
+
+/* nav topbar */
+.ntop{padding:14px 18px 10px;flex-shrink:0}
+.ntop-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.ntop-back{width:30px;height:30px;border-radius:9px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;flex-shrink:0}
+.ntop-back svg{width:16px;height:16px;fill:#fff}
+.ntop-logo{display:flex;align-items:center;gap:7px;flex:1}
+.ntop-lbox{width:26px;height:26px;background:var(--blue);border-radius:7px;display:flex;align-items:center;justify-content:center}
+.ntop-lbox svg{width:14px;height:14px;fill:#E6F1FB}
+.ntop-brand{font-size:15px;font-weight:700;color:#fff}
+.ntop-title{font-size:17px;font-weight:700;color:#fff;line-height:1.2}
+.ntop-sub{font-size:11px;color:#85B7EB;margin-top:2px}
+
+/* scroll body */
+.sbody{flex:1;overflow-y:auto;padding:0 14px 12px;display:flex;flex-direction:column;gap:10px}
+.sbody::-webkit-scrollbar{display:none}
+
+/* card */
+.c{background:rgba(255,255,255,.97);border-radius:16px;padding:12px 14px;border:.5px solid rgba(0,0,0,.06);box-shadow:0 2px 12px rgba(0,0,0,.06)}
+.ctitle{font-size:12px;font-weight:700;color:var(--tx);margin-bottom:10px;letter-spacing:-.01em}
+
+/* action button */
+.actbtn{height:52px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;margin:0 14px 14px;border:none;cursor:pointer;font-family:var(--f);transition:all .2s;letter-spacing:-.01em;gap:8px}
+.abblue{background:var(--blue);color:#fff;box-shadow:0 4px 20px rgba(24,95,165,.35)}
+.abblue:hover{background:var(--blue-d);box-shadow:0 6px 28px rgba(24,95,165,.5);transform:translateY(-1px)}
+.abgreen{background:var(--green);color:#EAF3DE;box-shadow:0 4px 20px rgba(39,80,10,.35)}
+.abgreen:hover{background:#1e3a07;transform:translateY(-1px)}
+.aborange{background:#EF9F27;color:#fff;box-shadow:0 4px 20px rgba(239,159,39,.35)}
+.aborange:hover{transform:translateY(-1px)}
+.actbtn:disabled{opacity:.4;pointer-events:none;transform:none!important}
+
+/* bottom nav */
+.bnav{background:rgba(255,255,255,.97);border-top:.5px solid var(--bdr);display:flex;height:58px;flex-shrink:0;padding:0 4px}
+.ni{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;border-radius:12px;margin:4px 2px;transition:background .15s}
+.ni:hover{background:rgba(0,0,0,.04)}
+.ni svg{width:17px;height:17px;fill:#B4B2A9}
+.ni span{font-size:9px;color:#B4B2A9;font-weight:500}
+.ni.a svg{fill:var(--blue)} .ni.a span{color:var(--blue)}
+.hind{width:90px;height:4px;background:#2C2C2A;border-radius:3px;margin:4px auto 8px;flex-shrink:0;opacity:.6}
+
+/* forms */
+.frow2{display:flex;gap:8px}
+.fg{flex:1;display:flex;flex-direction:column;gap:4px}
+.flbl{font-size:10px;font-weight:600;color:var(--tx2);letter-spacing:.03em}
+.finp{height:40px;background:var(--bg);border-radius:10px;border:1.5px solid var(--bdr2);font-size:13px;color:var(--tx);padding:0 12px;font-family:var(--f);outline:none;width:100%;transition:border-color .2s}
+.finp:focus{border-color:var(--blue);background:#fff}
+.finp.err{border-color:var(--red)!important;background:var(--red-l)}
+.finp.ok{border-color:var(--green-a)!important}
+select.finp{cursor:pointer}
+.ferr{font-size:9px;color:var(--red);margin-top:2px;height:12px}
+
+/* platform pills */
+.plats{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+.pp{flex:1;min-width:70px;height:36px;border-radius:10px;border:1.5px solid var(--bdr2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--tx2);cursor:pointer;transition:all .2s;background:var(--bg);white-space:nowrap}
+.pp.sel{background:var(--blue-l);border-color:var(--blue);color:var(--blue)}
+.pp:hover:not(.sel){border-color:var(--blue-m);color:var(--blue-m)}
+
+/* otp input */
+.otprow{display:flex;gap:8px;justify-content:center;margin:8px 0}
+.otpd{width:44px;height:52px;border-radius:12px;border:2px solid var(--bdr2);background:var(--bg);text-align:center;font-size:20px;font-weight:700;font-family:var(--mono);color:var(--tx);outline:none;transition:all .2s}
+.otpd:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(24,95,165,.15)}
+.otpd.filled{border-color:var(--green-a);background:var(--green-l);color:var(--green)}
+
+/* steps */
+.steps{display:flex;flex-direction:column;gap:0}
+.step{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:.5px solid #F1EFE8}
+.step:last-child{border:none}
+.sdot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .4s}
+.sdot.done{background:var(--green-l)} .sdot.done svg{width:14px;height:14px;fill:var(--green)}
+.sdot.active{background:var(--blue-l)} .sdot.active svg{width:14px;height:14px;fill:var(--blue);animation:pulse 1.5s infinite}
+.sdot.pend{background:#F1EFE8} .sdot.pend svg{width:14px;height:14px;fill:#B4B2A9}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.stxt .sttitle{font-size:12px;font-weight:600;color:var(--tx)}
+.stxt .stsub{font-size:10px;color:var(--tx2);margin-top:1px}
+.stxt .stsub.ok{color:var(--green-m)} .stxt .stsub.on{color:var(--blue-m)}
+
+/* progress bar */
+.prog-wrap{background:#F1EFE8;border-radius:4px;height:5px;overflow:hidden;margin:8px 0 4px}
+.prog-bar{height:5px;border-radius:4px;transition:width .6s cubic-bezier(.4,0,.2,1);background:linear-gradient(90deg,var(--blue),var(--blue-m))}
+
+/* toggle grid */
+.tgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.tg{background:var(--bg);border-radius:10px;padding:8px 6px;text-align:center;border:1.5px solid var(--bdr2);cursor:pointer;transition:all .2s}
+.tg:hover{border-color:var(--blue-m)}
+.tg.sel{background:var(--blue-l);border-color:var(--blue)}
+.tg-ico{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;margin:0 auto 4px}
+.tg-ico svg{width:13px;height:13px}
+.tg-lbl{font-size:10px;font-weight:500;color:var(--tx)}
+
+/* plan card */
+.plan{border-radius:14px;padding:14px;border:2px solid var(--blue);background:linear-gradient(135deg,rgba(24,95,165,.07),rgba(55,138,221,.04))}
+.plan-head{display:flex;justify-content:space-between;align-items:flex-start}
+.plan-name{font-size:14px;font-weight:700;color:var(--blue-d)}
+.plan-sub{font-size:10px;color:var(--blue-m);margin-top:2px}
+.plan-price{text-align:right}
+.plan-amt{font-size:26px;font-weight:700;color:var(--blue-d);line-height:1}
+.plan-per{font-size:10px;color:var(--blue-m)}
+.plan-divider{border:none;border-top:.5px solid rgba(24,95,165,.2);margin:10px 0}
+.plan-row{display:flex;justify-content:space-between;font-size:11px;padding:3px 0}
+.plan-lbl{color:var(--blue-m)} .plan-val{font-weight:600;color:var(--blue-d)}
+
+/* info rows */
+.irow{display:flex;justify-content:space-between;padding:7px 0;border-bottom:.5px solid #F1EFE8;font-size:12px}
+.irow:last-child{border:none}
+.ik{color:var(--tx2)} .iv{font-weight:600;color:var(--tx)}
+.iv.g{color:var(--green-m)} .iv.r{color:var(--red)} .iv.o{color:var(--org)}
+
+/* badges */
+.badge{font-size:10px;padding:3px 8px;border-radius:6px;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.b-r{background:var(--red-l);color:var(--red)}
+.b-w{background:var(--org-l);color:var(--org)}
+.b-g{background:var(--green-l);color:var(--green-m)}
+.b-b{background:var(--blue-l);color:var(--blue)}
+
+/* alert header */
+.alert-hdr{background:linear-gradient(135deg,#4a0a0a,#2a0a0a);padding:14px 18px;flex-shrink:0;display:flex;align-items:center;gap:12px;border-bottom:.5px solid rgba(163,45,45,.3)}
+.alert-ico{width:38px;height:38px;border-radius:50%;background:rgba(163,45,45,.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;animation:shake 2s infinite}
+@keyframes shake{0%,90%,100%{transform:rotate(0)}92%{transform:rotate(-5deg)}96%{transform:rotate(5deg)}}
+.alert-ico svg{width:18px;height:18px;fill:#ff6b6b}
+.alert-ttl{font-size:14px;font-weight:700;color:#ff6b6b}
+.alert-stl{font-size:10px;color:rgba(255,107,107,.6);margin-top:2px}
+
+/* hero bar */
+.hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 100%);padding:14px 18px;flex-shrink:0}
+.hero-greeting{font-size:11px;color:#85B7EB}
+.hero-name{font-size:14px;font-weight:700;color:#fff;margin-top:3px;display:flex;align-items:center;gap:8px}
+.hero-stats{display:flex;margin-top:12px;border-top:.5px solid rgba(255,255,255,.1);padding-top:10px}
+.hs{flex:1;text-align:center} .hs:not(:last-child){border-right:.5px solid rgba(255,255,255,.1)}
+.hsl{font-size:9px;color:#85B7EB;margin-bottom:3px} .hsv{font-size:19px;font-weight:700;color:#fff;line-height:1}
+
+/* pipeline */
+.pipe{display:flex;align-items:center;justify-content:space-between;padding:4px 0}
+.ps{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1}
+.pd{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.pd.ok{background:var(--green-l)} .pd.ok svg{width:13px;height:13px;fill:var(--green)}
+.pd.on{background:var(--blue-l);animation:pulse 1.5s infinite} .pd.on svg{width:13px;height:13px;fill:var(--blue)}
+.pd.pnd{background:#F1EFE8} .pd.pnd svg{width:13px;height:13px;fill:#B4B2A9}
+.pline{flex:1;height:2px;background:var(--green-l);margin-bottom:14px}
+.pline.g{background:#F1EFE8}
+.plbl{font-size:9px;text-align:center;color:var(--tx2);font-weight:500}
+.plbl.ok{color:var(--green-m)} .plbl.on{color:var(--blue-m)}
+
+/* score bars */
+.sbar{margin-bottom:8px}
+.sbar-head{display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px}
+.sbar-lbl{color:var(--tx2)} .sbar-val{font-weight:700}
+.sbar-bg{height:6px;background:#F1EFE8;border-radius:4px;overflow:hidden}
+.sbar-fill{height:6px;border-radius:4px;transition:width 1.2s cubic-bezier(.4,0,.2,1)}
+
+/* notify box */
+.nbox{border-radius:12px;padding:10px 12px;display:flex;align-items:flex-start;gap:10px}
+.nbox.warn{background:var(--org-l);border:.5px solid #EF9F27}
+.nbox.success{background:var(--green-l);border:.5px solid #97C459}
+.nbox.info{background:var(--blue-l);border:.5px solid #85B7EB}
+.nbox.danger{background:var(--red-l);border:.5px solid #F7C1C1}
+.nbox-ico{width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.nbox-ico svg{width:12px;height:12px}
+.nbox-ttl{font-size:11px;font-weight:700}
+.nbox-txt{font-size:10px;margin-top:2px;line-height:1.5}
+
+/* pulse dot */
+.pdot{width:8px;height:8px;border-radius:50%;background:var(--green-a);animation:pulse 2s infinite;display:inline-block}
+
+/* ─── ADMIN SHELL ─── */
+#adminWrap{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#0a0a12 0%,#0c1a3a 100%);
+  opacity:0;pointer-events:none;transition:opacity .5s ease;padding:16px;
+}
+#adminWrap.on{opacity:1;pointer-events:all}
+.desktop{
+  width:100%;max-width:1200px;height:calc(100vh - 32px);max-height:700px;
+  background:var(--bg);border-radius:16px;overflow:hidden;display:flex;
+  box-shadow:0 40px 100px rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.05);
+}
+.aside{width:168px;background:var(--navy);display:flex;flex-direction:column;flex-shrink:0}
+.aside-logo{padding:14px 14px 12px;border-bottom:.5px solid var(--navy2);display:flex;align-items:center;gap:8px}
+.aside-lbox{width:26px;height:26px;background:var(--blue);border-radius:7px;display:flex;align-items:center;justify-content:center}
+.aside-lbox svg{width:14px;height:14px;fill:#E6F1FB}
+.aside-brand{font-size:14px;font-weight:700;color:#fff}
+.aside-sub{font-size:8px;color:var(--navy3)}
+.aside-sec{padding:8px 0 4px}
+.aside-sec-lbl{font-size:8px;color:var(--navy3);padding:0 14px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.07em}
+.nav-item{display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:pointer;transition:all .15s;position:relative;border-left:2px solid transparent}
+.nav-item svg{width:13px;height:13px;fill:var(--navy3);flex-shrink:0}
+.nav-item span{font-size:10px;color:#85B7EB;white-space:nowrap}
+.nav-item:hover{background:rgba(255,255,255,.04)}
+.nav-item.ac{background:var(--navy2);border-left-color:var(--blue)} .nav-item.ac svg{fill:#fff} .nav-item.ac span{color:#fff;font-weight:600}
+.nav-item.danger svg{fill:#F09595} .nav-item.danger span{color:#F09595}
+.nav-item.highlight{background:rgba(15,58,26,.6);border-left-color:var(--green-a)} .nav-item.highlight svg{fill:#97C459} .nav-item.highlight span{color:#C0DD97;font-weight:600}
+.aside-bottom{margin-top:auto;padding:10px 14px;border-top:.5px solid var(--navy2);display:flex;align-items:center;gap:8px}
+.aside-av{width:24px;height:24px;border-radius:50%;background:var(--navy2);display:flex;align-items:center;justify-content:center;font-size:9px;color:#85B7EB;font-weight:700}
+.npill{font-size:8px;background:var(--green-a);color:var(--green-l);padding:1px 6px;border-radius:4px;margin-left:3px}
+.dmain{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.dtop{background:#fff;border-bottom:.5px solid var(--bdr);padding:0 16px;height:44px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.livebadge{font-size:9px;padding:3px 9px;border-radius:6px;background:var(--green-l);color:var(--green-m);display:flex;align-items:center;gap:5px;font-weight:600}
+.dscroll{flex:1;overflow-y:auto;padding:14px 16px;background:var(--bg)}
+.dscroll::-webkit-scrollbar{width:4px} .dscroll::-webkit-scrollbar-thumb{background:#d0d0d0;border-radius:2px}
+.tab-content{display:none} .tab-content.on{display:block}
+.krow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.kpi{background:#fff;border-radius:12px;padding:10px 12px;border:.5px solid var(--bdr);cursor:pointer;transition:all .2s}
+.kpi:hover{box-shadow:0 4px 16px rgba(0,0,0,.08);transform:translateY(-1px)}
+.kl{font-size:9px;color:var(--tx2);margin-bottom:4px;font-weight:500} .kv{font-size:20px;font-weight:700;color:var(--tx);line-height:1} .ks{font-size:9px;margin-top:3px}
+.agrid2{display:grid;grid-template-columns:3fr 2fr;gap:10px;margin-bottom:10px}
+.agrid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.ac2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.acard{background:#fff;border-radius:12px;padding:10px 12px;border:.5px solid var(--bdr)}
+.actit{font-size:10px;font-weight:700;color:var(--tx);margin-bottom:8px;letter-spacing:-.01em}
+.arow{display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid #F1EFE8;font-size:9px}
+.arow:last-child{border:none}
+.ak{color:var(--tx2)} .av{font-weight:600;color:var(--tx)}
+.av-g{font-weight:600;color:var(--green-m)} .av-r{font-weight:600;color:var(--red)} .av-o{font-weight:600;color:var(--org)}
+.frow{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:.5px solid #F1EFE8;font-size:9px}
+.frow:last-child{border:none}
+.trow-d{display:flex;align-items:center;gap:5px;padding:5px 0;border-bottom:.5px solid #F1EFE8;font-size:9px}
+.trow-d:last-child{border:none}
+.tbar-w{width:64px;height:5px;background:#F1EFE8;border-radius:3px;overflow:hidden;flex-shrink:0}
+.tbar{height:5px;border-radius:3px}
+.a-rb{height:5px;background:#F1EFE8;border-radius:3px;overflow:hidden;margin:3px 0}
+.a-rf{height:5px;border-radius:3px}
+.a-sbar{margin-bottom:6px}
+.dbadge{font-size:8px;padding:2px 7px;border-radius:5px;font-weight:600}
+.db-r{background:var(--red-l);color:var(--red)} .db-w{background:var(--org-l);color:var(--org)} .db-g{background:var(--green-l);color:var(--green-m)} .db-b{background:var(--blue-l);color:var(--blue)}
+.action-btn{font-size:9px;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;font-family:var(--f);font-weight:600;transition:all .15s}
+.action-btn:hover{filter:brightness(.9)}
+/* modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:500;backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-overlay.on{opacity:1;pointer-events:all}
+.modal{background:#fff;border-radius:20px;padding:24px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.2);transform:scale(.95);transition:transform .2s}
+.modal-overlay.on .modal{transform:scale(1)}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:6px}
+.modal-sub{font-size:12px;color:var(--tx2);margin-bottom:20px;line-height:1.5}
+.modal-btns{display:flex;gap:10px;margin-top:20px}
+.mbtn{flex:1;height:40px;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;border:none;font-family:var(--f)}
+.mbtn-cancel{background:var(--bg);color:var(--tx2)}
+.mbtn-confirm{background:var(--red);color:#fff}
+/* toast */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;padding:12px 20px;border-radius:12px;font-size:12px;font-weight:600;box-shadow:0 8px 32px rgba(0,0,0,.3);opacity:0;transition:all .3s;z-index:1000;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.toast-g{background:var(--green)}
+.toast.toast-r{background:var(--red)}
+.toast.toast-b{background:var(--blue)}
+/* switch role btn */
+.switcher{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:300}
+.switcher button{background:rgba(255,255,255,.08);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.15);padding:9px 22px;border-radius:10px;font-family:var(--f);font-size:11px;cursor:pointer;transition:all .2s;backdrop-filter:blur(8px)}
+.switcher button:hover{background:rgba(255,255,255,.12);color:rgba(255,255,255,.8)}
+/* loading spinner */
+.spinner{width:20px;height:20px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* countdown */
+.countdown{font-family:var(--mono);font-size:11px;color:var(--blue-m);text-align:center;margin-top:4px}
+/* success anim */
+@keyframes pop{0%{transform:scale(0)}60%{transform:scale(1.2)}100%{transform:scale(1)}}
+.pop{animation:pop .4s ease both}
+/* OTP resend */
+.resend{font-size:10px;color:var(--blue-m);text-align:center;cursor:pointer;text-decoration:underline;margin-top:4px}
+.resend:hover{color:var(--blue-d)}
+/* Chart bars */
+.chart-bar-wrap{display:flex;align-items:flex-end;gap:4px;height:60px;margin-top:8px}
+.cbar{flex:1;border-radius:4px 4px 0 0;transition:height .8s cubic-bezier(.4,0,.2,1);cursor:pointer;position:relative}
+.cbar:hover::after{content:attr(data-v);position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:8px;font-weight:700;color:var(--tx);background:#fff;padding:1px 4px;border-radius:3px;white-space:nowrap}
+.chart-labels{display:flex;gap:4px;margin-top:4px}
+.clbl{flex:1;text-align:center;font-size:8px;color:var(--tx2)}
+/* Fraud worker row */
+.fw-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:.5px solid #F1EFE8;gap:8px}
+.fw-row:last-child{border:none}
+.fw-id{font-size:10px;font-weight:700;color:var(--tx);min-width:54px}
+.fw-reason{font-size:9px;color:var(--tx2);flex:1}
+.fw-score{font-size:10px;font-weight:700;min-width:28px;text-align:center}
+/* notification bell */
+.bell{position:relative}
+.bell-dot{position:absolute;top:-3px;right:-3px;width:8px;height:8px;border-radius:50%;background:var(--red);border:1.5px solid #fff}
+/* real-time ticker */
+.ticker{background:var(--navy);border-radius:8px;padding:6px 10px;margin-bottom:10px;display:flex;align-items:center;gap:6px;overflow:hidden}
+.ticker-lbl{font-size:8px;color:#85B7EB;font-weight:600;white-space:nowrap;flex-shrink:0}
+.ticker-track{flex:1;overflow:hidden;position:relative;height:14px}
+.ticker-inner{position:absolute;white-space:nowrap;animation:ticker 12s linear infinite;font-size:9px;color:rgba(255,255,255,.7);font-family:var(--mono)}
+@keyframes ticker{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}}
+</style>
+</head>
+<body>
+
+<!-- ══ ROLE SELECTION ══ -->
+<div id="roleScreen">
+  <div class="role-logo">
+    <div class="role-logo-box"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"/></svg></div>
+    <div class="role-brand">Aegis</div>
+  </div>
+  <div class="role-tagline">Parametric Insurance for Gig Workers</div>
+  <div class="role-label">Select your role to continue</div>
+  <div class="role-cards">
+    <div class="role-card" id="card-user" onclick="selectRole('user')">
+      <div class="rc-icon" style="background:rgba(24,95,165,.2)">
+        <svg viewBox="0 0 24 24" style="fill:#85B7EB;width:28px;height:28px"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+      </div>
+      <div class="rc-title">Gig Worker</div>
+      <div class="rc-desc">Sign up, get coverage, receive instant payouts when thresholds are breached</div>
+    </div>
+    <div class="role-card" id="card-admin" onclick="selectRole('admin')">
+      <div class="rc-icon" style="background:rgba(39,80,10,.2)">
+        <svg viewBox="0 0 24 24" style="fill:#97C459;width:28px;height:28px"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      </div>
+      <div class="rc-title">Admin</div>
+      <div class="rc-desc">Monitor triggers, review fraud flags, manage payouts and platform analytics</div>
+    </div>
+  </div>
+  <button class="role-cta" id="roleCta" onclick="proceed()">Continue →</button>
+</div>
+
+<!-- ══ PHONE ══ -->
+<div id="phoneWrap">
+  <div class="pshell">
+    <div class="pinner">
+      <div class="notch-bar"><div class="notch"></div></div>
+      <div class="statusbar">
+        <span class="stime" id="clock">9:41</span>
+        <div class="sico">
+          <svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+          <svg viewBox="0 0 24 24"><path d="M17 4h3V2h-3c-1.03 0-1.9.53-2.4 1.32l-7.1 12.36C7.1 16.55 6.3 17 5.4 17H2v2h3.4c1.03 0 1.9-.53 2.4-1.32l7.1-12.36C15.3 4.45 16.1 4 17 4z"/></svg>
+          <svg viewBox="0 0 24 24"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"/></svg>
+        </div>
+      </div>
+      <div class="screens" id="screens">
+
+        <!-- ▸ VIEW 0: Phone number -->
+        <div class="view active" id="v0">
+          <div class="ntop">
+            <div class="ntop-row">
+              <div class="ntop-logo"><div class="ntop-lbox"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"/></svg></div><div class="ntop-brand">Aegis</div></div>
+            </div>
+            <div class="ntop-title">Enter your phone</div>
+            <div class="ntop-sub" style="color:#85B7EB">We'll send an OTP to verify</div>
+          </div>
+          <div class="sbody">
+            <div class="c">
+              <div class="fg">
+                <div class="flbl">Mobile number</div>
+                <div style="display:flex;gap:8px">
+                  <div style="height:40px;background:var(--bg);border-radius:10px;border:1.5px solid var(--bdr2);display:flex;align-items:center;padding:0 10px;font-size:13px;color:var(--tx2);flex-shrink:0">🇮🇳 +91</div>
+                  <input class="finp" id="phoneInput" type="tel" maxlength="10" placeholder="98XXXXXXXX" oninput="validatePhone()" style="flex:1">
+                </div>
+                <div class="ferr" id="phoneErr"></div>
+              </div>
+            </div>
+            <div class="nbox info">
+              <div class="nbox-ico" style="background:var(--blue-l)"><svg viewBox="0 0 24 24" style="fill:var(--blue)"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div>
+              <div><div class="nbox-ttl" style="color:var(--blue-d)">Secure verification</div><div class="nbox-txt" style="color:var(--blue-m)">Your data is encrypted end-to-end. KYC is required to activate coverage.</div></div>
+            </div>
+          </div>
+          <button class="actbtn abblue" id="sendOtpBtn" onclick="sendOtp()" disabled>Send OTP →</button>
+        </div>
+
+        <!-- ▸ VIEW 1: OTP -->
+        <div class="view" id="v1">
+          <div class="ntop">
+            <div class="ntop-row">
+              <button class="ntop-back" onclick="goView(0)"><svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></button>
+              <div class="ntop-logo"><div class="ntop-lbox"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"/></svg></div><div class="ntop-brand">Aegis</div></div>
+            </div>
+            <div class="ntop-title">Verify OTP</div>
+            <div class="ntop-sub" style="color:#85B7EB">Sent to +91 <span id="otpPhoneDisplay"></span></div>
+          </div>
+          <div class="sbody">
+            <div class="c">
+              <div class="ctitle">Enter 6-digit code</div>
+              <div class="otprow">
+                <input class="otpd" id="o0" maxlength="1" type="tel" oninput="otpNext(0)">
+                <input class="otpd" id="o1" maxlength="1" type="tel" oninput="otpNext(1)">
+                <input class="otpd" id="o2" maxlength="1" type="tel" oninput="otpNext(2)">
+                <input class="otpd" id="o3" maxlength="1" type="tel" oninput="otpNext(3)">
+                <input class="otpd" id="o4" maxlength="1" type="tel" oninput="otpNext(4)">
+                <input class="otpd" id="o5" maxlength="1" type="tel" oninput="otpNext(5)">
+              </div>
+              <div class="countdown" id="otpCountdown">Resend in 30s</div>
+              <div class="resend" id="resendBtn" style="display:none" onclick="resendOtp()">Resend OTP</div>
+            </div>
+            <div class="nbox warn">
+              <div class="nbox-ico" style="background:var(--org-l)"><svg viewBox="0 0 24 24" style="fill:var(--org)"><path d="M1 21L12 2l11 19H1zm11-3v-2h-2v2h2zm0-4v-4h-2v4h2z"/></svg></div>
+              <div><div class="nbox-ttl" style="color:var(--org)">Demo OTP: 123456</div><div class="nbox-txt" style="color:var(--org)">This is a prototype. In production, a real OTP would be sent via SMS.</div></div>
+            </div>
+          </div>
+          <button class="actbtn abblue" id="verifyOtpBtn" onclick="verifyOtp()" disabled>Verify →</button>
+        </div>
+
+        <!-- ▸ VIEW 2: KYC Profile -->
+        <div class="view" id="v2">
+          <div class="ntop" style="background:var(--navy)">
+            <div class="ntop-row">
+              <div class="ntop-logo"><div class="ntop-lbox"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"/></svg></div><div class="ntop-brand">Aegis</div></div>
+            </div>
+            <div class="ntop-title" style="color:#fff">Complete KYC</div>
+            <div class="ntop-sub">Step 2 of 4 — Profile details</div>
+            <div class="prog-wrap"><div class="prog-bar" style="width:50%"></div></div>
+          </div>
+          <div class="sbody">
+            <div class="c">
+              <div class="ctitle">Personal details</div>
+              <div class="frow2" style="margin-bottom:10px">
+                <div class="fg">
+                  <div class="flbl">Full name</div>
+                  <input class="finp" id="nameInput" type="text" placeholder="Ravi Kumar" oninput="validateKYC()">
+                  <div class="ferr" id="nameErr"></div>
+                </div>
+                <div class="fg">
+                  <div class="flbl">Date of birth</div>
+                  <input class="finp" id="dobInput" type="date" oninput="validateKYC()">
+                  <div class="ferr" id="dobErr"></div>
+                </div>
+              </div>
+              <div class="frow2">
+                <div class="fg">
+                  <div class="flbl">City</div>
+                  <select class="finp" id="cityInput" onchange="validateKYC()">
+                    <option value="">Select city</option>
+                    <option>Chennai</option><option>Bangalore</option><option>Mumbai</option>
+                    <option>Hyderabad</option><option>Delhi</option><option>Pune</option>
+                  </select>
+                  <div class="ferr" id="cityErr"></div>
+                </div>
+                <div class="fg">
+                  <div class="flbl">Aadhaar last 4</div>
+                  <input class="finp" id="aadhaarInput" type="tel" maxlength="4" placeholder="XXXX" oninput="validateKYC()">
+                  <div class="ferr" id="aadhaarErr"></div>
+                </div>
+              </div>
+            </div>
+            <div class="c">
+              <div class="ctitle">Delivery platform</div>
+              <div class="plats" id="platPills">
+                <div class="pp" data-p="Swiggy" onclick="selPlat(this)">🛵 Swiggy</div>
+                <div class="pp" data-p="Zomato" onclick="selPlat(this)">🍕 Zomato</div>
+                <div class="pp" data-p="Amazon" onclick="selPlat(this)">📦 Amazon</div>
+                <div class="pp" data-p="Blinkit" onclick="selPlat(this)">⚡ Blinkit</div>
+              </div>
+              <div class="ferr" id="platErr" style="margin-top:6px"></div>
+            </div>
+            <div class="c" id="aadhaarVerBox" style="display:none">
+              <div class="ctitle">Aadhaar e-KYC</div>
+              <div class="steps">
+                <div class="step"><div class="sdot done"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div><div class="stxt"><div class="sttitle">Phone verified</div><div class="stsub ok">OTP confirmed</div></div></div>
+                <div class="step" id="aadhaarStep"><div class="sdot active" id="aadhaarDot"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div><div class="stxt"><div class="sttitle" id="aadhaarStepTitle">Aadhaar e-KYC</div><div class="stsub on" id="aadhaarStepSub">Pending verification</div></div></div>
+                <div class="step" id="platStep"><div class="sdot pend" id="platDot"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div><div class="stxt"><div class="sttitle" style="color:var(--tx2)">Platform ID</div><div class="stsub" id="platStepSub">Link platform account</div></div></div>
+                <div class="step"><div class="sdot pend"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div><div class="stxt"><div class="sttitle" style="color:var(--tx2)">Data consent</div><div class="stsub">Location &amp; motion access</div></div></div>
+              </div>
+            </div>
+          </div>
+          <button class="actbtn abblue" id="kycBtn" onclick="submitKYC()" disabled>Verify &amp; Continue →</button>
+        </div>
+
+        <!-- ▸ VIEW 3: KYC Processing -->
+        <div class="view" id="v3">
+          <div class="ntop" style="background:var(--navy)">
+            <div class="ntop-row"><div class="ntop-logo"><div class="ntop-lbox"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"/></svg></div><div class="ntop-brand">Aegis</div></div></div>
+            <div class="ntop-title" style="color:#fff">Verifying identity</div>
+            <div class="ntop-sub">Step 3 of 4 — e-KYC in progress</div>
+            <div class="prog-wrap"><div class="prog-bar" style="width:75%"></div></div>
+          </div>
+          <div class="sbody">
+            <div class="c" style="text-align:center;padding:20px">
+              <div id="kycSpinnerWrap" style="display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:50%;background:var(--blue-l);margin-bottom:12px">
+                <div class="spinner" style="border-color:rgba(24,95,165,.3);border-top-color:var(--blue);width:28px;height:28px"></div>
+              </div>
+              <div style="font-size:14px;font-weight:700;color:var(--tx)" id="kycStatusTitle">Connecting to DigiLocker…</div>
+              <div style="font-size:11px;color:var(--tx2);margin-top:4px" id="kycStatusSub">Please wait while we verify your Aadhaar</div>
+            </div>
+            <div class="c" id="kycStepsList">
+              <div class="steps">
+                <div class="step" id="ks1"><div class="sdot active" id="ks1d"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div><div class="stxt"><div class="sttitle">Connecting to DigiLocker</div><div class="stsub on" id="ks1s">In progress…</div></div></div>
+                <div class="step" id="ks2"><div class="sdot pend" id="ks2d"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div><div class="stxt"><div class="sttitle">Validating Aadhaar details</div><div class="stsub" id="ks2s">Waiting</div></div></div>
+                <div class="step" id="ks3"><div class="sdot pend" id="ks3d"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div><div class="stxt"><div class="sttitle">Linking platform account</div><div class="stsub" id="ks3s">Waiting</div></div></div>
+                <div class="step" id="ks4"><div class="sdot pend" id="ks4d"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div><div class="stxt"><div class="sttitle">Calculating risk score</div><div class="stsub" id="ks4s">Waiting</div></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ▸ VIEW 4: Choose Plan -->
+        <div class="view" id="v4">
+          <div class="ntop" style="background:var(--navy)">
+            <div class="ntop-row"><div class="ntop-logo"><div class="ntop-lbox"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"/></svg></div><div class="ntop-brand">Aegis</div></div></div>
+            <div class="ntop-title" style="color:#fff">Choose your plan</div>
+            <div class="ntop-sub">KYC verified · <span id="workerName2"></span></div>
+            <div class="prog-wrap"><div class="prog-bar" style="width:100%"></div></div>
+          </div>
+          <div class="sbody">
+            <div class="c">
+              <div class="ctitle">Parametric triggers</div>
+              <div class="tgrid" id="triggerGrid">
+                <div class="tg sel" data-t="Rainfall"><div class="tg-ico" style="background:var(--blue-l)"><svg viewBox="0 0 24 24" style="fill:var(--blue)"><path d="M17.66 8L12 2.35 6.34 8C4.78 9.56 4 11.64 4 13.64c0 2 .78 4.04 2.34 5.58 1.56 1.56 3.62 2.33 5.66 2.33s4.1-.77 5.66-2.33C19.22 17.68 20 15.64 20 13.64c0-2-.78-4.08-2.34-5.64z"/></svg></div><div class="tg-lbl">Rainfall</div></div>
+                <div class="tg sel" data-t="Temperature"><div class="tg-ico" style="background:var(--org-l)"><svg viewBox="0 0 24 24" style="fill:var(--org)"><path d="M15 13V5c0-1.66-1.34-3-3-3S9 3.34 9 5v8c-1.21.91-2 2.37-2 4 0 2.76 2.24 5 5 5s5-2.24 5-5c0-1.63-.79-3.09-2-4z"/></svg></div><div class="tg-lbl">Temperature</div></div>
+                <div class="tg sel" data-t="AQI"><div class="tg-ico" style="background:var(--red-l)"><svg viewBox="0 0 24 24" style="fill:var(--red)"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div><div class="tg-lbl">AQI</div></div>
+                <div class="tg sel" data-t="Order Vol"><div class="tg-ico" style="background:var(--green-l)"><svg viewBox="0 0 24 24" style="fill:var(--green)"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg></div><div class="tg-lbl">Order Vol</div></div>
+                <div class="tg sel" data-t="Runtime"><div class="tg-ico" style="background:#EEEDFE"><svg viewBox="0 0 24 24" style="fill:#534AB7"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm.5 13H11v-6l5.25 3.15-.75 1.23L12.5 11.5V15z"/></svg></div><div class="tg-lbl">Runtime</div></div>
+                <div class="tg sel" data-t="Local News"><div class="tg-ico" style="background:#F1EFE8"><svg viewBox="0 0 24 24" style="fill:var(--tx3)"><path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm0 5h-2V5h2v3z"/></svg></div><div class="tg-lbl">Local News</div></div>
+              </div>
+              <div style="font-size:9px;color:var(--tx2);margin-top:6px">Tap to toggle triggers. More = higher coverage, higher premium.</div>
+            </div>
+            <div class="plan" id="planCard">
+              <div class="plan-head">
+                <div><div class="plan-name">Standard Plan</div><div class="plan-sub" id="planTriggerCount">All 6 triggers active</div></div>
+                <div class="plan-price"><div class="plan-amt" id="planAmt">₹50</div><div class="plan-per">/week</div></div>
+              </div>
+              <hr class="plan-divider">
+              <div class="plan-row"><span class="plan-lbl">AI risk score</span><span class="plan-val" id="riskScore">72 / 100</span></div>
+              <div class="plan-row"><span class="plan-lbl">Premium (AI adjusted)</span><span class="plan-val" id="premiumAmt">₹150/week</span></div>
+              <div class="plan-row"><span class="plan-lbl">Max weekly payout</span><span class="plan-val">₹2,000</span></div>
+              <div class="plan-row"><span class="plan-lbl">Daily coverage</span><span class="plan-val">₹1,000</span></div>
+            </div>
+          </div>
+          <button class="actbtn abgreen" onclick="subscribePlan()">Subscribe Now →</button>
+        </div>
+
+        <!-- ▸ VIEW 5: Dashboard / Home -->
+        <div class="view" id="v5">
+          <div class="hero">
+            <div class="hero-greeting">Good afternoon, <span id="workerNameHero"></span></div>
+            <div class="hero-name"><span class="pdot"></span> Standard Plan · Active</div>
+            <div class="hero-stats">
+              <div class="hs"><div class="hsl">Plan</div><div class="hsv">₹50</div></div>
+              <div class="hs"><div class="hsl">Premium</div><div class="hsv">₹150</div></div>
+              <div class="hs"><div class="hsl">Coverage</div><div class="hsv">₹2K</div></div>
+              <div class="hs"><div class="hsl">Payouts</div><div class="hsv" id="totalPayouts">₹0</div></div>
+            </div>
+          </div>
+          <div class="sbody" style="padding-top:10px">
+            <div class="nbox danger" id="rainfallAlert" style="display:none;cursor:pointer" onclick="goView(6)">
+              <div class="nbox-ico" style="background:rgba(163,45,45,.2)"><svg viewBox="0 0 24 24" style="fill:var(--red)"><path d="M1 21L12 2l11 19H1zm11-3v-2h-2v2h2zm0-4v-4h-2v4h2z"/></svg></div>
+              <div><div class="nbox-ttl" style="color:var(--red)">⚠ Threshold Breached!</div><div class="nbox-txt" style="color:var(--red)">Rainfall trigger — Chennai Zone 4. Tap to claim ₹1,000</div></div>
+            </div>
+            <div class="c">
+              <div class="ctitle">Live trigger status</div>
+              <div class="irow"><span class="ik">🌧 Rainfall (Chennai)</span><span class="iv g" id="tr-rain">82mm — BREACH</span></div>
+              <div class="irow"><span class="ik">🌡 Temperature</span><span class="iv" id="tr-temp">32°C — Normal</span></div>
+              <div class="irow"><span class="ik">💨 AQI</span><span class="iv o" id="tr-aqi">220 — Watch</span></div>
+              <div class="irow"><span class="ik">📦 Order volume</span><span class="iv">-18% — Normal</span></div>
+            </div>
+            <div class="c">
+              <div class="ctitle">Your coverage this week</div>
+              <div class="irow"><span class="ik">Plan</span><span class="iv">Standard · <span id="activeTriggers">6</span> triggers</span></div>
+              <div class="irow"><span class="ik">City</span><span class="iv" id="workerCity">Chennai</span></div>
+              <div class="irow"><span class="ik">Platform</span><span class="iv" id="workerPlatform">Swiggy</span></div>
+              <div class="irow"><span class="ik">Renewal</span><span class="iv">Sun, Oct 19</span></div>
+            </div>
+          </div>
+          <div class="bnav">
+            <div class="ni a" onclick="goView(5)"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg><span>Home</span></div>
+            <div class="ni" onclick="goView(6)"><svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg><span>Alerts</span></div>
+            <div class="ni" onclick="goView(4)"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"/></svg><span>Plan</span></div>
+            <div class="ni" onclick="goView(7)"><svg viewBox="0 0 24 24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg><span>Payouts</span></div>
+          </div>
+          <div class="hind"></div>
+        </div>
+
+        <!-- ▸ VIEW 6: Claim -->
+        <div class="view" id="v6">
+          <div class="alert-hdr">
+            <div class="alert-ico"><svg viewBox="0 0 24 24"><path d="M1 21L12 2l11 19H1zm11-3v-2h-2v2h2zm0-4v-4h-2v4h2z"/></svg></div>
+            <div><div class="alert-ttl">Threshold Breached</div><div class="alert-stl">Rainfall · Chennai Zone 4 · Oct 14, 3:44 PM</div></div>
+          </div>
+          <div class="sbody">
+            <div class="c">
+              <div class="ctitle">Payout details</div>
+              <div class="irow"><span class="ik">Trigger</span><span class="iv">Rainfall — 82mm</span></div>
+              <div class="irow"><span class="ik">Threshold</span><span class="iv">&gt; 50mm triggers payout</span></div>
+              <div class="irow"><span class="ik">Zone</span><span class="iv">Zone 4 — Central Chennai</span></div>
+              <div class="irow"><span class="ik">Eligible payout</span><span class="iv g" style="font-size:16px;font-weight:700">₹1,000</span></div>
+              <div class="irow"><span class="ik">Your plan</span><span class="iv">Standard · Active</span></div>
+            </div>
+            <div class="c">
+              <div class="ctitle">Location verification</div>
+              <div class="pipe">
+                <div class="ps"><div class="pd ok"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div><div class="plbl ok">GPS</div></div>
+                <div class="pline"></div>
+                <div class="ps"><div class="pd ok"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div><div class="plbl ok">Tower</div></div>
+                <div class="pline"></div>
+                <div class="ps"><div class="pd on"><svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg></div><div class="plbl on">Behaviour</div></div>
+                <div class="pline g"></div>
+                <div class="ps"><div class="pd pnd"><svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2z"/></svg></div><div class="plbl">AI Score</div></div>
+              </div>
+              <div style="font-size:10px;color:var(--blue-m);text-align:center;margin-top:8px">Authenticating your location…</div>
+            </div>
+            <div class="nbox warn">
+              <div class="nbox-ico" style="background:var(--org-l)"><svg viewBox="0 0 24 24" style="fill:var(--org)"><path d="M1 21L12 2l11 19H1zm11-3v-2h-2v2h2zm0-4v-4h-2v4h2z"/></svg></div>
+              <div><div class="nbox-ttl" style="color:var(--org)">Multi-factor fraud check running</div><div class="nbox-txt" style="color:var(--org)">Location, movement patterns, and device integrity are being validated.</div></div>
+            </div>
+          </div>
+          <button class="actbtn aborange" onclick="startFraudCheck()">Claim ₹1,000 →</button>
+          <div class="bnav">
+            <div class="ni" onclick="goView(5)"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg><span>Home</span></div>
+            <div class="ni a"><svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg><span>Alerts</span></div>
+            <div class="ni" onclick="goView(4)"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"/></svg><span>Plan</span></div>
+            <div class="ni" onclick="goView(7)"><svg viewBox="0 0 24 24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg><span>Payouts</span></div>
+          </div>
+          <div class="hind"></div>
+        </div>
+
+        <!-- ▸ VIEW 7: Payouts history -->
+        <div class="view" id="v7">
+          <div class="ntop" style="background:var(--navy)">
+            <div class="ntop-row">
+              <button class="ntop-back" onclick="goView(5)"><svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></button>
+              <div class="ntop-logo"><div class="ntop-lbox"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"/></svg></div><div class="ntop-brand">Aegis</div></div>
+            </div>
+            <div class="ntop-title" style="color:#fff">Payout history</div>
+            <div class="ntop-sub">Your claim & payment records</div>
+          </div>
+          <div class="sbody" style="padding-top:10px">
+            <div class="c">
+              <div class="ctitle">This week</div>
+              <div id="payoutList">
+                <div style="font-size:11px;color:var(--tx2);text-align:center;padding:16px">No payouts yet this week</div>
+              </div>
+            </div>
+            <div class="c">
+              <div class="ctitle">Lifetime stats</div>
+              <div class="irow"><span class="ik">Total received</span><span class="iv g" id="lifetimeTotal">₹0</span></div>
+              <div class="irow"><span class="ik">Claims made</span><span class="iv" id="claimsCount">0</span></div>
+              <div class="irow"><span class="ik">Avg payout time</span><span class="iv">&lt;12 min</span></div>
+            </div>
+          </div>
+          <div class="bnav">
+            <div class="ni" onclick="goView(5)"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg><span>Home</span></div>
+            <div class="ni" onclick="goView(6)"><svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg><span>Alerts</span></div>
+            <div class="ni" onclick="goView(4)"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"/></svg><span>Plan</span></div>
+            <div class="ni a"><svg viewBox="0 0 24 24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg><span>Payouts</span></div>
+          </div>
+          <div class="hind"></div>
+        </div>
+
+        <!-- ▸ VIEW 8: Fraud + Payout processing -->
+        <div class="view" id="v8">
+          <div class="hero">
+            <div class="hero-greeting">Fraud check · <span id="workerNameFraud"></span></div>
+            <div class="hero-name">Claim being validated</div>
+            <div class="hero-stats">
+              <div class="hs"><div class="hsl">Claim</div><div class="hsv">₹1,000</div></div>
+              <div class="hs"><div class="hsl">Trigger</div><div class="hsv" style="font-size:13px">Rainfall</div></div>
+              <div class="hs"><div class="hsl">Status</div><div class="hsv" style="font-size:13px" id="fraudStatus">Scanning</div></div>
+            </div>
+          </div>
+          <div class="sbody">
+            <div class="c">
+              <div class="ctitle">AI fraud risk analysis</div>
+              <div class="sbar"><div class="sbar-head"><span class="sbar-lbl">Location consistency</span><span class="sbar-val" id="sb1v" style="color:var(--green-m)">0%</span></div><div class="sbar-bg"><div class="sbar-fill" id="sb1" style="width:0%;background:var(--green-a)"></div></div></div>
+              <div class="sbar"><div class="sbar-head"><span class="sbar-lbl">Movement patterns</span><span class="sbar-val" id="sb2v" style="color:var(--green-m)">0%</span></div><div class="sbar-bg"><div class="sbar-fill" id="sb2" style="width:0%;background:var(--green-a)"></div></div></div>
+              <div class="sbar"><div class="sbar-head"><span class="sbar-lbl">Order activity (90 min)</span><span class="sbar-val" id="sb3v" style="color:var(--green-m)">0%</span></div><div class="sbar-bg"><div class="sbar-fill" id="sb3" style="width:0%;background:var(--green-a)"></div></div></div>
+              <div class="sbar"><div class="sbar-head"><span class="sbar-lbl">Device integrity</span><span class="sbar-val" id="sb4v" style="color:var(--green-m)">0%</span></div><div class="sbar-bg"><div class="sbar-fill" id="sb4" style="width:0%;background:var(--green-a)"></div></div></div>
+            </div>
+            <div id="fraudResult" style="display:none">
+              <div class="nbox success">
+                <div class="nbox-ico" style="background:var(--green-l)"><svg viewBox="0 0 24 24" style="fill:var(--green)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+                <div><div class="nbox-ttl" style="color:var(--green)">No fraud detected</div><div class="nbox-txt" style="color:var(--green-m)">All signals are clean. Initiating UPI transfer.</div></div>
+              </div>
+            </div>
+            <div class="c" id="paymentPipeCard" style="display:none">
+              <div class="ctitle">Payment processing</div>
+              <div class="pipe" id="payPipe">
+                <div class="ps"><div class="pd ok"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div><div class="plbl ok">Validated</div></div>
+                <div class="pline"></div>
+                <div class="ps"><div class="pd ok"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div><div class="plbl ok">Gateway</div></div>
+                <div class="pline"></div>
+                <div class="ps" id="pp3"><div class="pd on" id="pp3d"><svg viewBox="0 0 24 24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg></div><div class="plbl on" id="pp3l">Sending</div></div>
+                <div class="pline g" id="pline4"></div>
+                <div class="ps"><div class="pd pnd" id="pp4d"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div><div class="plbl" id="pp4l">Paid</div></div>
+              </div>
+              <div style="font-size:10px;color:var(--blue-m);text-align:center;margin-top:8px" id="upiStatus">Sending ₹1,000 to your UPI…</div>
+            </div>
+          </div>
+          <div class="bnav">
+            <div class="ni" onclick="goView(5)"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg><span>Home</span></div>
+            <div class="ni a"><svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg><span>Alerts</span></div>
+            <div class="ni" onclick="goView(4)"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"/></svg><span>Plan</span></div>
+            <div class="ni" onclick="goView(7)"><svg viewBox="0 0 24 24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg><span>Payouts</span></div>
+          </div>
+          <div class="hind"></div>
+        </div>
+
+      </div><!-- end screens -->
+    </div>
+  </div>
+  <div class="switcher"><button onclick="backToRole()">← Switch role</button></div>
+</div>
+
+<!-- ══ ADMIN DASHBOARD ══ -->
+<div id="adminWrap">
+  <div class="desktop">
+    <div class="aside">
+      <div class="aside-logo">
+        <div class="aside-lbox"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"/></svg></div>
+        <div><div class="aside-brand">Aegis</div><div class="aside-sub">Admin console</div></div>
+      </div>
+      <div class="aside-sec">
+        <div class="aside-sec-lbl">System</div>
+        <div class="nav-item ac" onclick="showTab('overview',this)"><svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg><span>Overview</span></div>
+        <div class="nav-item" onclick="showTab('workers',this)"><svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg><span>Workers</span></div>
+        <div class="nav-item" onclick="showTab('finance',this)"><svg viewBox="0 0 24 24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg><span>Financials</span></div>
+      </div>
+      <div class="aside-sec">
+        <div class="aside-sec-lbl">Operations</div>
+        <div class="nav-item" onclick="showTab('triggers',this)"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg><span>Triggers</span></div>
+        <div class="nav-item" onclick="showTab('ai',this)"><svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg><span>AI Predictions</span></div>
+        <div class="nav-item danger" onclick="showTab('fraud',this)"><svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2z"/></svg><span>Fraud · <span id="fraudCount">18</span></span></div>
+        <div class="nav-item highlight" onclick="showTab('payouts',this)"><svg viewBox="0 0 24 24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg><span>Payouts<span class="npill">Live</span></span></div>
+      </div>
+      <div class="aside-sec">
+        <div class="aside-sec-lbl">Admin</div>
+        <div class="nav-item" onclick="showTab('policy',this)"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z"/></svg><span>Policy Controls</span></div>
+      </div>
+      <div class="aside-bottom">
+        <div class="aside-av">AD</div>
+        <div><div style="font-size:10px;color:#fff;font-weight:600">Admin</div><div style="font-size:8px;color:var(--navy3)">Ops team</div></div>
+      </div>
+    </div>
+    <div class="dmain">
+      <div class="dtop">
+        <div><div style="font-size:12px;font-weight:700;color:var(--tx)" id="pageTitle">System overview</div><div style="font-size:8px;color:var(--tx2)">Oct 14, 2025 · All cities · Live data</div></div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="livebadge"><div class="pulse"></div>Live</div>
+          <div style="font-size:8px;color:var(--tx2);background:var(--bg);padding:3px 9px;border-radius:6px;border:.5px solid var(--bdr)">Oct 14, 2025</div>
+          <div style="width:26px;height:26px;border-radius:50%;background:var(--blue-l);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--blue)">AD</div>
+        </div>
+      </div>
+      <div class="dscroll">
+
+        <!-- TAB: OVERVIEW -->
+        <div class="tab-content on" id="tab-overview">
+          <div class="ticker"><span class="ticker-lbl">LIVE</span><div class="ticker-track"><div class="ticker-inner">⚡ Rainfall breach Chennai Zone 4 — 1,240 payouts initiated &nbsp;|&nbsp; AQI watch Mumbai — no payout yet &nbsp;|&nbsp; 3 fraud accounts terminated &nbsp;|&nbsp; ₹11.98L dispatched via Razorpay UPI &nbsp;|&nbsp; Model accuracy: 94.2%</div></div></div>
+          <div class="krow">
+            <div class="kpi" onclick="showTab('workers',document.querySelector('[onclick*=workers]'))"><div class="kl">KYC Verified Workers</div><div class="kv" style="color:var(--blue-d)" id="k-workers">12,480</div><div class="ks" style="color:var(--green-m)">+340 this week</div></div>
+            <div class="kpi" onclick="showTab('finance',document.querySelector('[onclick*=finance]'))"><div class="kl">Active Subscribers</div><div class="kv" id="k-subs">9,814</div><div class="ks" style="color:var(--tx2)">₹50/week avg</div></div>
+            <div class="kpi" onclick="showTab('triggers',document.querySelector('[onclick*=triggers]'))"><div class="kl">Threshold Events Today</div><div class="kv" style="color:var(--org)" id="k-events">14</div><div class="ks" style="color:var(--org)">3 cities active</div></div>
+            <div class="kpi" onclick="showTab('fraud',document.querySelector('.nav-item.danger'))"><div class="kl">Fraud Flags</div><div class="kv" style="color:var(--red)" id="k-fraud">18</div><div class="ks" style="color:var(--red)">3 terminated</div></div>
+          </div>
+          <div class="agrid2">
+            <div class="acard">
+              <div class="actit">Trigger monitoring — active breaches</div>
+              <div class="trow-d"><span style="font-weight:600;min-width:68px">Rainfall</span><div class="tbar-w"><div class="tbar" style="width:82%;background:#378ADD"></div></div><span style="color:var(--blue);min-width:36px;text-align:right">82mm</span><span class="dbadge db-r" style="margin-left:6px">Breach</span></div>
+              <div class="trow-d"><span style="font-weight:600;min-width:68px">AQI</span><div class="tbar-w"><div class="tbar" style="width:55%;background:#E24B4A"></div></div><span style="color:var(--tx2);min-width:36px;text-align:right">220</span><span class="dbadge db-w" style="margin-left:6px">Watch</span></div>
+              <div class="trow-d"><span style="font-weight:600;min-width:68px">Temperature</span><div class="tbar-w"><div class="tbar" style="width:32%;background:#97C459"></div></div><span style="color:var(--tx2);min-width:36px;text-align:right">32°C</span><span class="dbadge db-g" style="margin-left:6px">Clear</span></div>
+              <div class="trow-d"><span style="font-weight:600;min-width:68px">Order vol</span><div class="tbar-w"><div class="tbar" style="width:18%;background:#B5D4F4"></div></div><span style="color:var(--tx2);min-width:36px;text-align:right">-18%</span><span class="dbadge db-g" style="margin-left:6px">Clear</span></div>
+              <div style="font-size:9px;color:var(--tx2);margin-top:7px;padding-top:6px;border-top:.5px solid #F1EFE8">Payout triggered for <strong>1,240 workers</strong> in Chennai Zone 4. ₹12.4L being processed.</div>
+            </div>
+            <div class="acard">
+              <div class="actit">Payment gateway status</div>
+              <div class="arow"><span class="ak">Successful</span><span class="av-g">1,198</span></div>
+              <div class="arow"><span class="ak">Terminated (fraud)</span><span class="av-r">3</span></div>
+              <div class="arow"><span class="ak">Retry pending</span><span class="av-o">15</span></div>
+              <div class="arow"><span class="ak">Processing</span><span class="av">24</span></div>
+              <div style="margin-top:7px;background:var(--green-l);border-radius:8px;padding:7px 9px">
+                <div style="font-size:11px;font-weight:700;color:var(--green)">₹11.98L dispatched</div>
+                <div style="font-size:9px;color:var(--green-m)">via Razorpay UPI · avg 11 min payout</div>
+              </div>
+              <div style="margin-top:5px;background:var(--org-l);border-radius:8px;padding:7px 9px">
+                <div style="font-size:9px;font-weight:700;color:var(--org)">3 payments terminated</div>
+                <div style="font-size:8px;color:var(--org)">Failed fraud validity checks</div>
+              </div>
+            </div>
+          </div>
+          <div class="agrid3">
+            <div class="acard">
+              <div class="actit">Top fraud signals</div>
+              <div class="fw-row"><span class="fw-id">WK-4821</span><span class="fw-reason">Mock GPS</span><span class="fw-score" style="color:var(--red)">0.71</span><span class="dbadge db-r">Banned</span></div>
+              <div class="fw-row"><span class="fw-id">WK-7204</span><span class="fw-reason">No orders</span><span class="fw-score" style="color:var(--red)">0.68</span><span class="dbadge db-r">Banned</span></div>
+              <div class="fw-row"><span class="fw-id">WK-1093</span><span class="fw-reason">Tower mismatch</span><span class="fw-score" style="color:var(--org)">0.48</span><span class="dbadge db-w">Retry</span></div>
+              <div class="fw-row"><span class="fw-id">WK-3350</span><span class="fw-reason">Cluster ×22</span><span class="fw-score" style="color:var(--org)">0.44</span><span class="dbadge db-r">Ring</span></div>
+            </div>
+            <div class="acard">
+              <div class="actit">AI model status</div>
+              <div class="arow"><span class="ak">Accuracy</span><span class="av-g">94.2%</span></div>
+              <div class="arow"><span class="ak">Avg risk score</span><span class="av-o">72</span></div>
+              <div class="arow"><span class="ak">Predicted claims</span><span class="av">~1,450</span></div>
+              <div class="arow"><span class="ak">Premium adj.</span><span class="av-r">+12% next week</span></div>
+            </div>
+            <div class="acard">
+              <div class="actit">Financial snapshot</div>
+              <div class="arow"><span class="ak">Premiums</span><span class="av">₹4.9L</span></div>
+              <div class="arow"><span class="ak">Payouts</span><span class="av-r">₹12.4L</span></div>
+              <div class="arow"><span class="ak">Loss ratio</span><span class="av-o">68%</span></div>
+              <div class="arow"><span class="ak">Fraud savings</span><span class="av-g">₹84K</span></div>
+              <div class="arow"><span class="ak">SLA &lt;15min</span><span class="av-g">96.2%</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: FRAUD -->
+        <div class="tab-content" id="tab-fraud">
+          <div class="krow">
+            <div class="kpi"><div class="kl">Total flags</div><div class="kv" style="color:var(--red)" id="fd-total">18</div><div class="ks" style="color:var(--red)">↑ 3 from last week</div></div>
+            <div class="kpi"><div class="kl">Terminated</div><div class="kv" style="color:var(--red)" id="fd-term">3</div><div class="ks" style="color:var(--tx2)">Permanent ban</div></div>
+            <div class="kpi"><div class="kl">Under review</div><div class="kv" style="color:var(--org)" id="fd-review">12</div><div class="ks" style="color:var(--org)">Payout held</div></div>
+            <div class="kpi"><div class="kl">Fraud savings</div><div class="kv" style="color:var(--green-m)">₹84K</div><div class="ks" style="color:var(--green-m)">This week</div></div>
+          </div>
+          <div class="acard" style="margin-bottom:10px">
+            <div class="actit">Flagged workers — action required</div>
+            <div style="display:grid;grid-template-columns:60px 1fr 60px 70px 80px;gap:4px;font-size:8px;font-weight:700;color:var(--tx2);padding:4px 0;border-bottom:1px solid var(--bdr);margin-bottom:2px">
+              <span>Worker</span><span>Signal</span><span>Score</span><span>Status</span><span>Action</span>
+            </div>
+            <div id="fraudTable">
+              <!-- dynamically populated -->
+            </div>
+          </div>
+          <div class="ac2">
+            <div class="acard">
+              <div class="actit">Detection methods</div>
+              <div class="a-sbar"><div style="display:flex;justify-content:space-between;font-size:9px;color:var(--tx2);margin-bottom:2px"><span>Mock GPS</span><span style="font-weight:600;color:var(--red)">7 cases</span></div><div class="a-rb"><div class="a-rf" style="width:78%;background:var(--red)"></div></div></div>
+              <div class="a-sbar"><div style="display:flex;justify-content:space-between;font-size:9px;color:var(--tx2);margin-bottom:2px"><span>No order activity</span><span style="font-weight:600;color:var(--org)">5 cases</span></div><div class="a-rb"><div class="a-rf" style="width:55%;background:var(--org)"></div></div></div>
+              <div class="a-sbar"><div style="display:flex;justify-content:space-between;font-size:9px;color:var(--tx2);margin-bottom:2px"><span>Tower mismatch</span><span style="font-weight:600;color:var(--org)">4 cases</span></div><div class="a-rb"><div class="a-rf" style="width:44%;background:var(--org)"></div></div></div>
+              <div class="a-sbar"><div style="display:flex;justify-content:space-between;font-size:9px;color:var(--tx2);margin-bottom:2px"><span>Cluster fraud</span><span style="font-weight:600;color:var(--blue)">2 cases</span></div><div class="a-rb"><div class="a-rf" style="width:22%;background:var(--blue)"></div></div></div>
+            </div>
+            <div class="acard">
+              <div class="actit">Quick actions</div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <button class="action-btn" style="background:var(--red-l);color:var(--red)" onclick="bulkTerminate()">Terminate all HIGH risk</button>
+                <button class="action-btn" style="background:var(--org-l);color:var(--org)" onclick="showToast('Payout hold extended 24h','warn')">Extend payout hold 24h</button>
+                <button class="action-btn" style="background:var(--blue-l);color:var(--blue)" onclick="showToast('ML model retraining queued','info')">Retrain ML model</button>
+                <button class="action-btn" style="background:var(--green-l);color:var(--green-m)" onclick="showToast('Report exported to CSV','ok')">Export fraud report</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: PAYOUTS -->
+        <div class="tab-content" id="tab-payouts">
+          <div class="krow">
+            <div class="kpi"><div class="kl">Total dispatched</div><div class="kv" style="color:var(--green-m)">₹12.4L</div><div class="ks" style="color:var(--green-m)">Today</div></div>
+            <div class="kpi"><div class="kl">Successful</div><div class="kv" style="color:var(--green-m)">1,198</div><div class="ks" style="color:var(--tx2)">UPI transfers</div></div>
+            <div class="kpi"><div class="kl">Avg time</div><div class="kv">11 min</div><div class="ks" style="color:var(--green-m)">SLA: 15 min</div></div>
+            <div class="kpi"><div class="kl">Pending</div><div class="kv" style="color:var(--org)">39</div><div class="ks" style="color:var(--org)">Retries + fraud holds</div></div>
+          </div>
+          <div class="agrid2">
+            <div class="acard">
+              <div class="actit">Payout log — recent</div>
+              <div style="display:grid;grid-template-columns:55px 1fr 55px 60px;gap:4px;font-size:8px;font-weight:700;color:var(--tx2);padding:4px 0;border-bottom:1px solid var(--bdr);margin-bottom:2px">
+                <span>Worker</span><span>Trigger</span><span>Amount</span><span>Status</span>
+              </div>
+              <div id="payoutLog"></div>
+            </div>
+            <div class="acard">
+              <div class="actit">Payment channel breakdown</div>
+              <div class="arow"><span class="ak">UPI instant</span><span class="av-g">₹10.2L</span></div>
+              <div class="arow"><span class="ak">Bank transfer</span><span class="av">₹1.8L</span></div>
+              <div class="arow"><span class="ak">Held — fraud review</span><span class="av-o">₹0.4L</span></div>
+              <div style="margin-top:8px">
+                <div class="actit" style="margin-bottom:5px">Daily payout chart</div>
+                <div class="chart-bar-wrap" id="payoutChart"></div>
+                <div class="chart-labels" id="chartLabels"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: WORKERS -->
+        <div class="tab-content" id="tab-workers">
+          <div class="krow">
+            <div class="kpi"><div class="kl">Total registered</div><div class="kv" style="color:var(--blue-d)">14,210</div><div class="ks">All platforms</div></div>
+            <div class="kpi"><div class="kl">KYC verified</div><div class="kv" style="color:var(--green-m)">12,480</div><div class="ks" style="color:var(--green-m)">87.8%</div></div>
+            <div class="kpi"><div class="kl">KYC pending</div><div class="kv" style="color:var(--org)">1,312</div></div>
+            <div class="kpi"><div class="kl">KYC rejected</div><div class="kv" style="color:var(--red)">418</div></div>
+          </div>
+          <div class="agrid2">
+            <div class="acard">
+              <div class="actit">Platform distribution</div>
+              <div class="trow-d"><span style="font-weight:600;min-width:68px">Swiggy</span><div class="tbar-w"><div class="tbar" style="width:72%;background:#FF6B35"></div></div><span style="min-width:36px;text-align:right">5,280</span></div>
+              <div class="trow-d"><span style="font-weight:600;min-width:68px">Zomato</span><div class="tbar-w"><div class="tbar" style="width:58%;background:#E23744"></div></div><span style="min-width:36px;text-align:right">4,210</span></div>
+              <div class="trow-d"><span style="font-weight:600;min-width:68px">Amazon</span><div class="tbar-w"><div class="tbar" style="width:34%;background:#FF9900"></div></div><span style="min-width:36px;text-align:right">2,480</span></div>
+              <div class="trow-d"><span style="font-weight:600;min-width:68px">Blinkit</span><div class="tbar-w"><div class="tbar" style="width:14%;background:#FFD700"></div></div><span style="min-width:36px;text-align:right">510</span></div>
+            </div>
+            <div class="acard">
+              <div class="actit">City distribution</div>
+              <div class="arow"><span class="ak">Chennai</span><span class="av">4,210</span></div>
+              <div class="arow"><span class="ak">Bangalore</span><span class="av">3,890</span></div>
+              <div class="arow"><span class="ak">Mumbai</span><span class="av">2,640</span></div>
+              <div class="arow"><span class="ak">Hyderabad</span><span class="av">1,740</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: AI -->
+        <div class="tab-content" id="tab-ai">
+          <div class="krow">
+            <div class="kpi"><div class="kl">Model accuracy</div><div class="kv" style="color:var(--green-m)">94.2%</div><div class="ks" style="color:var(--green-m)">+1.3% this month</div></div>
+            <div class="kpi"><div class="kl">Avg risk score</div><div class="kv" style="color:var(--org)">72</div></div>
+            <div class="kpi"><div class="kl">Predicted claims</div><div class="kv">~1,450</div><div class="ks">Tomorrow</div></div>
+            <div class="kpi"><div class="kl">Premium adjustment</div><div class="kv" style="color:var(--red)">+12%</div><div class="ks">Next week</div></div>
+          </div>
+          <div class="agrid2">
+            <div class="acard">
+              <div class="actit">Risk factor weights</div>
+              <div class="a-sbar"><div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:2px"><span style="color:var(--tx2)">Location history</span><span style="font-weight:600">32%</span></div><div class="a-rb"><div class="a-rf" style="width:32%;background:var(--blue)"></div></div></div>
+              <div class="a-sbar"><div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:2px"><span style="color:var(--tx2)">Order activity</span><span style="font-weight:600">28%</span></div><div class="a-rb"><div class="a-rf" style="width:28%;background:var(--green-a)"></div></div></div>
+              <div class="a-sbar"><div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:2px"><span style="color:var(--tx2)">Weather severity</span><span style="font-weight:600">22%</span></div><div class="a-rb"><div class="a-rf" style="width:22%;background:var(--org)"></div></div></div>
+              <div class="a-sbar"><div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:2px"><span style="color:var(--tx2)">Historical claims</span><span style="font-weight:600">18%</span></div><div class="a-rb"><div class="a-rf" style="width:18%;background:var(--red)"></div></div></div>
+            </div>
+            <div class="acard">
+              <div class="actit">City risk forecast</div>
+              <div class="arow"><span class="ak">Chennai</span><span class="dbadge db-r">High · 72</span></div>
+              <div class="arow"><span class="ak">Mumbai</span><span class="dbadge db-w">Medium · 54</span></div>
+              <div class="arow"><span class="ak">Bangalore</span><span class="dbadge db-g">Low · 31</span></div>
+              <div class="arow"><span class="ak">Hyderabad</span><span class="dbadge db-g">Low · 28</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: TRIGGERS -->
+        <div class="tab-content" id="tab-triggers">
+          <div class="krow">
+            <div class="kpi"><div class="kl">Active breaches</div><div class="kv" style="color:var(--red)">2</div><div class="ks" style="color:var(--red)">Rainfall, AQI Watch</div></div>
+            <div class="kpi"><div class="kl">Cities affected</div><div class="kv" style="color:var(--org)">3</div></div>
+            <div class="kpi"><div class="kl">Workers triggered</div><div class="kv">1,240</div></div>
+            <div class="kpi"><div class="kl">Payout initiated</div><div class="kv" style="color:var(--green-m)">₹12.4L</div></div>
+          </div>
+          <div class="acard">
+            <div class="actit">All trigger thresholds — live</div>
+            <div style="display:grid;grid-template-columns:100px 1fr 80px 70px 80px;gap:4px;font-size:8px;font-weight:700;color:var(--tx2);padding:4px 0;border-bottom:1px solid var(--bdr);margin-bottom:2px">
+              <span>Trigger</span><span>Current</span><span>Threshold</span><span>Severity</span><span>Status</span>
+            </div>
+            <div style="display:grid;grid-template-columns:100px 1fr 80px 70px 80px;gap:4px;font-size:9px;padding:5px 0;border-bottom:.5px solid #F1EFE8;align-items:center">
+              <span style="font-weight:600">Rainfall (mm)</span><span style="color:var(--blue)">82mm</span><span style="color:var(--tx2)">&gt; 50mm</span><span><span class="dbadge db-r">High</span></span><span><span class="dbadge db-r">Breach</span></span>
+            </div>
+            <div style="display:grid;grid-template-columns:100px 1fr 80px 70px 80px;gap:4px;font-size:9px;padding:5px 0;border-bottom:.5px solid #F1EFE8;align-items:center">
+              <span style="font-weight:600">AQI</span><span style="color:var(--org)">220</span><span style="color:var(--tx2)">&gt; 200</span><span><span class="dbadge db-w">Medium</span></span><span><span class="dbadge db-w">Watch</span></span>
+            </div>
+            <div style="display:grid;grid-template-columns:100px 1fr 80px 70px 80px;gap:4px;font-size:9px;padding:5px 0;border-bottom:.5px solid #F1EFE8;align-items:center">
+              <span style="font-weight:600">Temperature</span><span style="color:var(--tx2)">32°C</span><span style="color:var(--tx2)">&gt; 42°C</span><span><span class="dbadge db-g">Low</span></span><span><span class="dbadge db-g">Clear</span></span>
+            </div>
+            <div style="display:grid;grid-template-columns:100px 1fr 80px 70px 80px;gap:4px;font-size:9px;padding:5px 0;border-bottom:.5px solid #F1EFE8;align-items:center">
+              <span style="font-weight:600">Flood risk</span><span style="color:var(--tx2)">Low</span><span style="color:var(--tx2)">High+</span><span><span class="dbadge db-g">Low</span></span><span><span class="dbadge db-g">Clear</span></span>
+            </div>
+            <div style="display:grid;grid-template-columns:100px 1fr 80px 70px 80px;gap:4px;font-size:9px;padding:5px 0;align-items:center">
+              <span style="font-weight:600">Order vol</span><span style="color:var(--tx2)">-18%</span><span style="color:var(--tx2)">&gt; -40%</span><span><span class="dbadge db-g">Low</span></span><span><span class="dbadge db-g">Clear</span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: FINANCE -->
+        <div class="tab-content" id="tab-finance">
+          <div class="krow">
+            <div class="kpi"><div class="kl">Premiums collected</div><div class="kv" style="color:var(--blue-d)">₹4.9L</div></div>
+            <div class="kpi"><div class="kl">Payouts dispatched</div><div class="kv" style="color:var(--red)">₹12.4L</div></div>
+            <div class="kpi"><div class="kl">Loss ratio</div><div class="kv" style="color:var(--org)">68%</div></div>
+            <div class="kpi"><div class="kl">Payout SLA</div><div class="kv" style="color:var(--green-m)">96.2%</div><div class="ks" style="color:var(--green-m)">&lt;15 min</div></div>
+          </div>
+          <div class="agrid3">
+            <div class="acard"><div class="actit">Revenue</div><div class="arow"><span class="ak">Standard plans</span><span class="av">₹3.2L</span></div><div class="arow"><span class="ak">Premium top-up</span><span class="av">₹1.1L</span></div><div class="arow"><span class="ak">Late subscription</span><span class="av">₹0.6L</span></div><div style="border-top:.5px solid var(--bdr);margin-top:5px;padding-top:5px;display:flex;justify-content:space-between;font-size:9px"><span style="font-weight:700">Total</span><span style="font-weight:700;color:var(--blue)">₹4.9L</span></div></div>
+            <div class="acard"><div class="actit">Payouts</div><div class="arow"><span class="ak">UPI instant</span><span class="av-g">₹10.2L</span></div><div class="arow"><span class="ak">Bank transfer</span><span class="av">₹1.8L</span></div><div class="arow"><span class="ak">Held</span><span class="av-o">₹0.4L</span></div></div>
+            <div class="acard"><div class="actit">Fraud savings</div><div class="arow"><span class="ak">Prevented</span><span class="av-g">₹84K</span></div><div class="arow"><span class="ak">Accounts flagged</span><span class="av-r">18</span></div><div class="arow"><span class="ak">Terminated</span><span class="av-r">3</span></div></div>
+          </div>
+        </div>
+
+        <!-- TAB: POLICY -->
+        <div class="tab-content" id="tab-policy">
+          <div class="acard" style="margin-bottom:10px">
+            <div class="actit">Policy controls — editable</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div class="fg"><div class="flbl" style="font-size:9px">Max weekly payout (₹)</div><input type="number" class="finp" value="2000" style="height:32px;font-size:11px"></div>
+              <div class="fg"><div class="flbl" style="font-size:9px">Min premium (₹/week)</div><input type="number" class="finp" value="50" style="height:32px;font-size:11px"></div>
+              <div class="fg"><div class="flbl" style="font-size:9px">Fraud score block threshold</div><input type="number" class="finp" value="0.6" step="0.05" style="height:32px;font-size:11px"></div>
+              <div class="fg"><div class="flbl" style="font-size:9px">KYC expiry (months)</div><input type="number" class="finp" value="12" style="height:32px;font-size:11px"></div>
+            </div>
+            <button class="action-btn" style="background:var(--blue);color:#fff;margin-top:10px;width:100%;height:34px;font-size:10px" onclick="showToast('Policy saved successfully','ok')">Save policy changes</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <div class="switcher"><button onclick="backToRole()">← Switch role</button></div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Confirm termination</div>
+    <div class="modal-sub" id="modalSub">Are you sure you want to permanently ban these workers? This action cannot be undone.</div>
+    <div class="modal-btns">
+      <button class="mbtn mbtn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="mbtn mbtn-confirm" id="modalConfirm">Terminate</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ══ STATE ══
+const S = {
+  role: null, phone: '', workerName: '', city: '', platform: '',
+  selectedTriggers: 6, planAmt: 50, premium: 150,
+  payouts: [], totalPayouts: 0, claimsCount: 0,
+  fraudWorkers: [
+    {id:'WK-4821',reason:'Mock GPS detected',score:0.71,status:'high',action:'Banned'},
+    {id:'WK-7204',reason:'No order activity (48h)',score:0.68,status:'high',action:'Banned'},
+    {id:'WK-9931',reason:'Duplicate device ID',score:0.65,status:'high',action:'Banned'},
+    {id:'WK-1093',reason:'Tower vs GPS mismatch',score:0.48,status:'med',action:'Retry'},
+    {id:'WK-3350',reason:'Cluster — same address ×22',score:0.44,status:'med',action:'Ring flag'},
+    {id:'WK-5512',reason:'Unusual movement pattern',score:0.39,status:'low',action:'Review'},
+    {id:'WK-2241',reason:'Low device integrity',score:0.35,status:'low',action:'Watch'},
+    {id:'WK-6672',reason:'Teleport GPS jump',score:0.71,status:'high',action:'Banned'},
+  ]
+};
+
+// ══ ROLE SELECT ══
+function selectRole(r) {
+  S.role = r;
+  document.querySelectorAll('.role-card').forEach(c => c.classList.remove('sel'));
+  document.getElementById('card-' + r).classList.add('sel');
+  document.getElementById('roleCta').classList.add('on');
+}
+
+function proceed() {
+  if (!S.role) return;
+  const rs = document.getElementById('roleScreen');
+  rs.style.opacity = '0'; rs.style.pointerEvents = 'none';
+  setTimeout(() => rs.style.display = 'none', 500);
+  if (S.role === 'user') {
+    document.getElementById('phoneWrap').classList.add('on');
+    tickClock(); setInterval(tickClock, 15000);
+  } else {
+    document.getElementById('adminWrap').classList.add('on');
+    buildFraudTable(); buildPayoutLog(); buildPayoutChart();
+  }
+}
+
+function backToRole() {
+  S.role = null;
+  document.getElementById('phoneWrap').classList.remove('on');
+  document.getElementById('adminWrap').classList.remove('on');
+  const rs = document.getElementById('roleScreen');
+  rs.style.display = 'flex'; rs.style.pointerEvents = 'all';
+  setTimeout(() => rs.style.opacity = '1', 10);
+  document.getElementById('roleCta').classList.remove('on');
+  document.querySelectorAll('.role-card').forEach(c => c.classList.remove('sel'));
+  resetPhone();
+}
+
+// ══ CLOCK ══
+function tickClock() {
+  const d = new Date(), h = d.getHours() % 12 || 12, m = String(d.getMinutes()).padStart(2,'0');
+  document.getElementById('clock').textContent = h + ':' + m;
+}
+
+// ══ VIEWS ══
+let currentView = 0;
+function goView(n) {
+  const prev = currentView;
+  if (prev === n) return;
+
+  // Determine direction: forward or back
+  const goingForward = n > prev;
+
+  const all = document.querySelectorAll('.view');
+
+  // Step 1: Strip everything — no flicker from lingering classes
+  all.forEach(v => {
+    v.classList.remove('active', 'prev');
+    v.style.transform = '';
+    v.style.opacity = '';
+  });
+
+  // Step 2: Position the incoming screen off-screen (right if forward, left if back)
+  const incoming = document.getElementById('v' + n);
+  const outgoing = document.getElementById('v' + prev);
+
+  // Set initial position of incoming without transition
+  incoming.style.transition = 'none';
+  incoming.style.transform = goingForward ? 'translateX(100%)' : 'translateX(-100%)';
+  incoming.style.opacity = '0';
+  incoming.style.visibility = 'visible';
+  incoming.style.pointerEvents = 'none';
+
+  // Force reflow so the browser registers the starting position
+  incoming.getBoundingClientRect();
+
+  // Step 3: Re-enable transition and animate both screens
+  incoming.style.transition = '';
+  outgoing.style.transition = '';
+
+  // Outgoing slides away
+  outgoing.style.transform = goingForward ? 'translateX(-100%)' : 'translateX(100%)';
+  outgoing.style.opacity = '0';
+
+  // Incoming slides in
+  incoming.style.transform = 'translateX(0)';
+  incoming.style.opacity = '1';
+  incoming.style.pointerEvents = 'all';
+
+  // Step 4: After transition ends, fully clean up outgoing
+  const cleanup = () => {
+    outgoing.style.transform = 'translateX(' + (goingForward ? '-100%' : '100%') + ')';
+    outgoing.style.opacity = '0';
+    outgoing.style.visibility = 'hidden';
+    outgoing.style.pointerEvents = 'none';
+    outgoing.removeEventListener('transitionend', cleanup);
+  };
+  outgoing.addEventListener('transitionend', cleanup, { once: true });
+
+  // Mark active
+  incoming.classList.add('active');
+  currentView = n;
+}
+
+// ══ SCREEN 0: Phone ══
+function validatePhone() {
+  const v = document.getElementById('phoneInput').value.replace(/\D/g,'');
+  const btn = document.getElementById('sendOtpBtn');
+  const err = document.getElementById('phoneErr');
+  if (v.length === 10) { btn.disabled = false; err.textContent = ''; document.getElementById('phoneInput').classList.add('ok'); }
+  else { btn.disabled = true; document.getElementById('phoneInput').classList.remove('ok'); if (v.length > 0) err.textContent = v.length < 10 ? `${10 - v.length} more digits needed` : ''; }
+}
+
+function sendOtp() {
+  S.phone = document.getElementById('phoneInput').value.replace(/\D/g,'').slice(0,10);
+  const btn = document.getElementById('sendOtpBtn');
+  btn.innerHTML = '<div class="spinner"></div>';
+  btn.disabled = true;
+  setTimeout(() => {
+    document.getElementById('otpPhoneDisplay').textContent = S.phone;
+    goView(1);
+    startOtpCountdown();
+    btn.innerHTML = 'Send OTP →';
+    btn.disabled = false;
+    showToast('OTP sent to +91 ' + S.phone, 'info');
+  }, 1200);
+}
+
+// ══ SCREEN 1: OTP ══
+let otpTimer;
+function startOtpCountdown() {
+  let t = 30;
+  const el = document.getElementById('otpCountdown');
+  const rb = document.getElementById('resendBtn');
+  el.style.display = 'block'; rb.style.display = 'none';
+  clearInterval(otpTimer);
+  otpTimer = setInterval(() => {
+    t--;
+    el.textContent = 'Resend in ' + t + 's';
+    if (t <= 0) { clearInterval(otpTimer); el.style.display = 'none'; rb.style.display = 'block'; }
+  }, 1000);
+}
+
+function resendOtp() { startOtpCountdown(); showToast('OTP resent!', 'info'); }
+
+function otpNext(i) {
+  const el = document.getElementById('o' + i);
+  const v = el.value.replace(/\D/g,'');
+  el.value = v;
+  if (v) { el.classList.add('filled'); if (i < 5) document.getElementById('o' + (i+1)).focus(); }
+  else el.classList.remove('filled');
+  const otp = Array.from({length:6}, (_,j) => document.getElementById('o'+j).value).join('');
+  document.getElementById('verifyOtpBtn').disabled = otp.length < 6;
+}
+
+function verifyOtp() {
+  const otp = Array.from({length:6}, (_,j) => document.getElementById('o'+j).value).join('');
+  const btn = document.getElementById('verifyOtpBtn');
+  btn.innerHTML = '<div class="spinner"></div>'; btn.disabled = true;
+  setTimeout(() => {
+    if (otp === '123456') {
+      showToast('Phone verified!', 'ok');
+      document.getElementById('aadhaarVerBox').style.display = 'block';
+      goView(2);
+    } else {
+      showToast('Wrong OTP. Try 123456', 'err');
+      document.querySelectorAll('.otpd').forEach(d => { d.value = ''; d.classList.remove('filled'); });
+      document.getElementById('o0').focus();
+    }
+    btn.innerHTML = 'Verify →'; btn.disabled = false;
+  }, 1000);
+}
+
+// ══ SCREEN 2: KYC ══
+function selPlat(el) {
+  document.querySelectorAll('.pp').forEach(p => p.classList.remove('sel'));
+  el.classList.add('sel');
+  S.platform = el.dataset.p;
+  document.getElementById('platErr').textContent = '';
+  // update platform step
+  const ps = document.getElementById('platStep');
+  const pd = document.getElementById('platDot');
+  pd.className = 'sdot active';
+  pd.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+  document.getElementById('platStepSub').textContent = S.platform + ' selected';
+  document.getElementById('platStepSub').className = 'stsub on';
+  validateKYC();
+}
+
+function validateKYC() {
+  const name = document.getElementById('nameInput').value.trim();
+  const dob = document.getElementById('dobInput').value;
+  const city = document.getElementById('cityInput').value;
+  const aadhaar = document.getElementById('aadhaarInput').value.replace(/\D/g,'');
+  const hasPlatform = !!document.querySelector('.pp.sel');
+  const ok = name.length >= 2 && dob && city && aadhaar.length === 4 && hasPlatform;
+  document.getElementById('kycBtn').disabled = !ok;
+  if (name.length >= 2) { document.getElementById('nameInput').classList.add('ok'); document.getElementById('nameErr').textContent = ''; }
+  else if (name.length > 0) { document.getElementById('nameErr').textContent = 'Enter full name'; document.getElementById('nameInput').classList.remove('ok'); }
+  if (aadhaar.length === 4) { document.getElementById('aadhaarInput').classList.add('ok'); document.getElementById('aadhaarErr').textContent = ''; }
+  else if (aadhaar.length > 0) { document.getElementById('aadhaarErr').textContent = 'Enter 4 digits'; document.getElementById('aadhaarInput').classList.remove('ok'); }
+  if (city) document.getElementById('cityInput').classList.add('ok');
+}
+
+function submitKYC() {
+  S.workerName = document.getElementById('nameInput').value.trim();
+  S.city = document.getElementById('cityInput').value;
+  const btn = document.getElementById('kycBtn');
+  btn.innerHTML = '<div class="spinner"></div>'; btn.disabled = true;
+  setTimeout(() => {
+    // Update aadhaar step
+    const ad = document.getElementById('aadhaarDot');
+    ad.className = 'sdot active';
+    document.getElementById('aadhaarStepSub').textContent = 'Verifying via DigiLocker…';
+    goView(3);
+    runKYCSteps();
+    btn.innerHTML = 'Verify & Continue →'; btn.disabled = false;
+  }, 600);
+}
+
+function runKYCSteps() {
+  const steps = [
+    { dot:'ks1d', sub:'ks1s', title:'Connecting to DigiLocker', ok:'Connected ✓', next:1800 },
+    { dot:'ks2d', sub:'ks2s', title:'Validating Aadhaar', ok:'Validated ✓', next:1800 },
+    { dot:'ks3d', sub:'ks3s', title:'Linking ' + S.platform + ' account', ok:'Linked ✓', next:1500 },
+    { dot:'ks4d', sub:'ks4s', title:'Calculating risk score', ok:'Score: 72 ✓', next:1200 },
+  ];
+  const titles = ['Connecting to DigiLocker…', 'Validating Aadhaar details…', 'Linking ' + S.platform + '…', 'Calculating risk score…'];
+  let delay = 400;
+  steps.forEach((s, i) => {
+    setTimeout(() => {
+      // activate current
+      const dot = document.getElementById(s.dot);
+      dot.className = 'sdot active';
+      dot.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+      document.getElementById(s.sub).textContent = 'In progress…';
+      document.getElementById(s.sub).className = 'stsub on';
+      document.getElementById('kycStatusTitle').textContent = titles[i];
+    }, delay);
+    delay += s.next;
+    setTimeout(() => {
+      const dot = document.getElementById(s.dot);
+      dot.className = 'sdot done';
+      dot.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+      document.getElementById(s.sub).textContent = s.ok;
+      document.getElementById(s.sub).className = 'stsub ok';
+    }, delay - 200);
+  });
+  setTimeout(() => {
+    document.getElementById('kycStatusTitle').textContent = 'KYC Complete!';
+    document.getElementById('kycStatusSub').textContent = 'Identity verified successfully';
+    const iw = document.getElementById('kycSpinnerWrap');
+    iw.style.background = 'var(--green-l)';
+    iw.innerHTML = '<svg viewBox="0 0 24 24" style="width:30px;height:30px;fill:var(--green)" class="pop"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+    showToast('KYC verified! Choose your plan', 'ok');
+    setTimeout(() => {
+      document.getElementById('workerName2').textContent = S.workerName;
+      goView(4);
+    }, 1000);
+  }, delay + 200);
+}
+
+// ══ SCREEN 4: PLAN ══
+document.querySelectorAll('.tg').forEach(t => {
+  t.addEventListener('click', () => {
+    t.classList.toggle('sel');
+    updatePlan();
+  });
+});
+
+function updatePlan() {
+  const active = document.querySelectorAll('.tg.sel').length;
+  S.selectedTriggers = active;
+  S.planAmt = active === 0 ? 0 : 20 + active * 5;
+  S.premium = Math.round(S.planAmt * 3);
+  document.getElementById('planAmt').textContent = '₹' + S.planAmt;
+  document.getElementById('premiumAmt').textContent = '₹' + S.premium + '/week';
+  document.getElementById('planTriggerCount').textContent = active + ' of 6 triggers active';
+  const score = active === 0 ? 0 : 55 + active * 3;
+  document.getElementById('riskScore').textContent = score + ' / 100';
+  document.getElementById('activeTriggers').textContent = active;
+}
+
+function subscribePlan() {
+  showToast('Subscribed! ₹' + S.planAmt + '/week deducted', 'ok');
+  document.getElementById('workerNameHero').textContent = S.workerName;
+  document.getElementById('workerCity').textContent = S.city;
+  document.getElementById('workerPlatform').textContent = S.platform;
+  document.getElementById('activeTriggers').textContent = S.selectedTriggers;
+  setTimeout(() => {
+    goView(5);
+    // show rainfall alert after 2s
+    setTimeout(() => {
+      document.getElementById('rainfallAlert').style.display = 'flex';
+      showToast('⚠ Rainfall threshold breached!', 'err');
+    }, 2000);
+  }, 400);
+}
+
+// ══ CLAIM FLOW ══
+function startFraudCheck() {
+  document.getElementById('workerNameFraud').textContent = S.workerName;
+  goView(8);
+  // animate bars
+  const bars = [{id:'sb1',val:88},{id:'sb2',val:75},{id:'sb3',val:92},{id:'sb4',val:95}];
+  bars.forEach((b, i) => {
+    setTimeout(() => {
+      document.getElementById(b.id).style.width = b.val + '%';
+      document.getElementById(b.id + 'v').textContent = b.val + '%';
+      if (i === bars.length - 1) {
+        setTimeout(completeFraudCheck, 800);
+      }
+    }, 500 + i * 600);
+  });
+}
+
+function completeFraudCheck() {
+  document.getElementById('fraudResult').style.display = 'block';
+  document.getElementById('paymentPipeCard').style.display = 'block';
+  document.getElementById('fraudStatus').textContent = 'Clean';
+  // complete pipeline
+  setTimeout(() => {
+    const pp3d = document.getElementById('pp3d'); pp3d.className = 'pd ok'; pp3d.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+    document.getElementById('pp3l').textContent = 'Sent'; document.getElementById('pp3l').className = 'plbl ok';
+    document.getElementById('pline4').className = 'pline';
+    const pp4d = document.getElementById('pp4d'); pp4d.className = 'pd ok'; pp4d.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+    document.getElementById('pp4l').textContent = 'Paid'; document.getElementById('pp4l').className = 'plbl ok';
+    document.getElementById('upiStatus').textContent = '✓ ₹1,000 sent to UPI successfully';
+    document.getElementById('upiStatus').style.color = 'var(--green-m)';
+    document.getElementById('fraudStatus').textContent = 'Paid ✓';
+    // update state
+    S.totalPayouts += 1000; S.claimsCount++;
+    document.getElementById('totalPayouts').textContent = '₹' + (S.totalPayouts).toLocaleString('en-IN');
+    document.getElementById('lifetimeTotal').textContent = '₹' + (S.totalPayouts).toLocaleString('en-IN');
+    document.getElementById('claimsCount').textContent = S.claimsCount;
+    const now = new Date();
+    S.payouts.push({ time: now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}), trigger:'Rainfall', amount:'₹1,000', status:'Paid' });
+    buildPayoutList();
+    document.getElementById('rainfallAlert').style.display = 'none';
+    showToast('₹1,000 paid to your UPI! 🎉', 'ok');
+    // update admin payouts if visible
+    buildPayoutLog();
+  }, 1200);
+}
+
+function buildPayoutList() {
+  const el = document.getElementById('payoutList');
+  if (!S.payouts.length) { el.innerHTML = '<div style="font-size:11px;color:var(--tx2);text-align:center;padding:16px">No payouts yet</div>'; return; }
+  el.innerHTML = S.payouts.slice().reverse().map(p => `
+    <div class="irow">
+      <span class="ik">${p.time} · ${p.trigger}</span>
+      <span class="iv g">${p.amount} <span style="font-size:9px;background:var(--green-l);color:var(--green-m);padding:2px 6px;border-radius:5px">${p.status}</span></span>
+    </div>`).join('');
+}
+
+// ══ ADMIN ══
+function showTab(tab, el) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('on'));
+  document.getElementById('tab-' + tab).classList.add('on');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('ac'));
+  if (el) el.classList.add('ac');
+  const titles = { overview:'System overview', workers:'Worker analytics', finance:'Financial metrics', triggers:'Trigger monitoring', ai:'AI predictions', fraud:'Fraud detection', payouts:'Payout management', policy:'Policy controls' };
+  document.getElementById('pageTitle').textContent = titles[tab] || tab;
+}
+
+function buildFraudTable() {
+  const t = document.getElementById('fraudTable');
+  t.innerHTML = S.fraudWorkers.map(w => `
+    <div style="display:grid;grid-template-columns:60px 1fr 55px 70px 80px;gap:4px;font-size:9px;padding:5px 0;border-bottom:.5px solid #F1EFE8;align-items:center">
+      <span style="font-weight:700">${w.id}</span>
+      <span style="color:var(--tx2)">${w.reason}</span>
+      <span style="font-weight:700;color:${w.score > 0.6 ? 'var(--red)' : w.score > 0.45 ? 'var(--org)' : 'var(--tx2)'}">${w.score}</span>
+      <span><span class="dbadge ${w.score > 0.6 ? 'db-r' : w.score > 0.45 ? 'db-w' : 'db-b'}">${w.action}</span></span>
+      <span>${w.score > 0.6 ? `<button class="action-btn" style="background:var(--red-l);color:var(--red);font-size:8px" onclick="terminateWorker('${w.id}')">Terminate</button>` : `<button class="action-btn" style="background:var(--green-l);color:var(--green-m);font-size:8px" onclick="clearWorker('${w.id}')">Clear</button>`}</span>
+    </div>`).join('');
+}
+
+function terminateWorker(id) {
+  showModal('Terminate ' + id + '?', 'This worker will be permanently banned. All pending payouts will be cancelled.', () => {
+    S.fraudWorkers = S.fraudWorkers.filter(w => w.id !== id);
+    buildFraudTable();
+    const count = S.fraudWorkers.length;
+    document.getElementById('fraudCount').textContent = count;
+    document.getElementById('k-fraud').textContent = count;
+    document.getElementById('fd-total').textContent = count;
+    showToast(id + ' terminated', 'err');
+  });
+}
+
+function clearWorker(id) {
+  S.fraudWorkers = S.fraudWorkers.filter(w => w.id !== id);
+  buildFraudTable();
+  showToast(id + ' cleared — payout released', 'ok');
+}
+
+function bulkTerminate() {
+  showModal('Terminate all HIGH risk workers?', 'This will permanently ban ' + S.fraudWorkers.filter(w => w.score > 0.6).length + ' workers with score > 0.6.', () => {
+    S.fraudWorkers = S.fraudWorkers.filter(w => w.score <= 0.6);
+    buildFraudTable();
+    showToast('High risk workers terminated', 'err');
+  });
+}
+
+const payoutLogData = [
+  {id:'WK-7821',trigger:'Rainfall',amount:'₹1,000',status:'ok'},
+  {id:'WK-3341',trigger:'Rainfall',amount:'₹1,000',status:'ok'},
+  {id:'WK-9012',trigger:'Rainfall',amount:'₹1,000',status:'ok'},
+  {id:'WK-4563',trigger:'AQI',amount:'₹500',status:'pending'},
+  {id:'WK-2218',trigger:'Rainfall',amount:'₹1,000',status:'ok'},
+  {id:'WK-8871',trigger:'Rainfall',amount:'₹1,000',status:'ok'},
+  {id:'WK-4821',trigger:'Rainfall',amount:'₹1,000',status:'fraud'},
+  {id:'WK-1102',trigger:'Rainfall',amount:'₹1,000',status:'retry'},
+];
+
+function buildPayoutLog() {
+  const el = document.getElementById('payoutLog');
+  if (!el) return;
+  const data = S.payouts.length ? [...payoutLogData, ...S.payouts.map(p => ({id:'WK-LIVE',trigger:p.trigger,amount:p.amount,status:'ok'}))] : payoutLogData;
+  el.innerHTML = data.map(p => `
+    <div style="display:grid;grid-template-columns:55px 1fr 55px 60px;gap:4px;font-size:9px;padding:5px 0;border-bottom:.5px solid #F1EFE8;align-items:center">
+      <span style="font-weight:700">${p.id}</span>
+      <span style="color:var(--tx2)">${p.trigger}</span>
+      <span style="font-weight:700">${p.amount}</span>
+      <span><span class="dbadge ${p.status==='ok'?'db-g':p.status==='fraud'?'db-r':p.status==='retry'?'db-w':'db-b'}">${p.status==='ok'?'Paid':p.status==='fraud'?'Blocked':p.status==='retry'?'Retry':'Pending'}</span></span>
+    </div>`).join('');
+}
+
+function buildPayoutChart() {
+  const el = document.getElementById('payoutChart');
+  const lel = document.getElementById('chartLabels');
+  if (!el) return;
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const vals = [8.2, 6.4, 11.3, 9.1, 12.4, 4.2, 7.8];
+  const max = Math.max(...vals);
+  el.innerHTML = vals.map((v, i) => `<div class="cbar" style="height:${(v/max)*100}%;background:${i===4?'var(--blue)':'#B5D4F4'}" data-v="₹${v}L"></div>`).join('');
+  lel.innerHTML = days.map(d => `<div class="clbl">${d}</div>`).join('');
+}
+
+// ══ MODAL ══
+let modalCb = null;
+function showModal(title, sub, cb) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalSub').textContent = sub;
+  document.getElementById('modalOverlay').classList.add('on');
+  modalCb = cb;
+  document.getElementById('modalConfirm').onclick = () => { closeModal(); if (modalCb) modalCb(); };
+}
+function closeModal() { document.getElementById('modalOverlay').classList.remove('on'); }
+
+// ══ TOAST ══
+let toastTimer;
+function showToast(msg, type='info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type==='ok' ? ' toast-g' : type==='err' ? ' toast-r' : type==='info' ? ' toast-b' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ══ RESET ══
+function resetPhone() {
+  currentView = 0;
+  // Hard reset all views — no transition
+  document.querySelectorAll('.view').forEach((v, i) => {
+    v.style.transition = 'none';
+    v.classList.remove('active', 'prev');
+    v.style.transform = i === 0 ? 'translateX(0)' : 'translateX(100%)';
+    v.style.opacity = i === 0 ? '1' : '0';
+    v.style.visibility = i === 0 ? 'visible' : 'hidden';
+    v.style.pointerEvents = i === 0 ? 'all' : 'none';
+  });
+  document.getElementById('v0').classList.add('active');
+  // Re-enable transitions after reset
+  setTimeout(() => {
+    document.querySelectorAll('.view').forEach(v => v.style.transition = '');
+  }, 50);
+  document.getElementById('phoneInput').value = '';
+  document.getElementById('phoneInput').classList.remove('ok','err');
+  document.getElementById('sendOtpBtn').disabled = true;
+  document.querySelectorAll('.otpd').forEach(d => { d.value = ''; d.classList.remove('filled'); });
+}
+</script>
+</body>
+</html>
