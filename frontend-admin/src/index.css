@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+@theme {
+  --color-gw-blue: #0066CC;
+  --color-deep-navy: #002B54;
+  --color-teal-accent: #00A4A4;
+  --color-orange-warning: #FF6B35;
+  --color-red-alert: #DC3545;
+  --color-light-gray: #F8F9FA;
+  --color-border-gray: #E9ECEF;
+  
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-[var(--color-light-gray)] text-[#333333] antialiased m-0 p-0 overflow-hidden;
+    font-family: theme('fontFamily.sans');
+  }
+}
+
+@layer components {
+  /* 2.2 Typography: Data/Mono */
+  .font-data {
+    @apply font-mono;
+    letter-spacing: -0.05em;
+  }
+
+  /* 2.3 Component Styles */
+  .metric-card {
+    @apply bg-white rounded-lg border border-[var(--color-border-gray)] p-5 shadow-sm transition-all duration-200 flex flex-col justify-between;
+  }
+  .metric-card:hover {
+    @apply shadow-md border-slate-300;
+  }
+
+  .high-density-table {
+    @apply w-full text-left border-collapse bg-white;
+  }
+  .high-density-table th {
+    @apply px-4 py-3 bg-[var(--color-light-gray)] border-b border-[var(--color-border-gray)] font-semibold text-[11px] uppercase tracking-widest text-slate-500;
+  }
+  .high-density-table td {
+    @apply px-4 py-3 border-b border-[var(--color-border-gray)] text-[13px] transition-colors;
+  }
+  .high-density-table tr:hover td {
+    @apply bg-blue-50/30;
+  }
+
+  /* Status Badges */
+  .status-pill {
+    @apply px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-transparent flex items-center justify-center w-max gap-1.5;
+  }
+  .status-live   { @apply bg-[var(--color-teal-accent)]/10 text-[var(--color-teal-accent)]; }
+  .status-watch  { @apply bg-[var(--color-orange-warning)]/10 text-[var(--color-orange-warning)]; }
+  .status-breach { @apply bg-[var(--color-red-alert)]/10 text-[var(--color-red-alert)]; }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }

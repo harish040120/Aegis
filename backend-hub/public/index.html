@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aegis AIOS | Guidewire Orchestrator</title>
+    <!-- Leaflet Map Library -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        :root {
+            --gw-blue: #0066CC;
+            --deep-navy: #002B54;
+            --light-gray: #F8F9FA;
+            --white: #FFFFFF;
+            --border-gray: #E9ECEF;
+            --text-main: #343A40;
+            --text-muted: #6C757D;
+            
+            /* Alert System */
+            --breach: #DC3545;
+            --watch: #FF6B35;
+            --live: #00A4A4;
+        }
+
+        body { 
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            line-height: 1.6; 
+            color: var(--text-main); 
+            margin: 0; 
+            background: var(--light-gray); 
+        }
+
+        header {
+            background: var(--deep-navy);
+            color: var(--white);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        header h1 { margin: 0; font-size: 1.25rem; font-weight: 600; letter-spacing: 0.5px; }
+        .system-status { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
+        .status-dot { width: 8px; height: 8px; background: var(--live); border-radius: 50%; }
+
+        main { max-width: 1400px; margin: 2rem auto; padding: 0 2rem; }
+
+        .grid-main { display: grid; grid-template-columns: 380px 1fr; gap: 30px; }
+
+        .card { 
+            background: var(--white); 
+            padding: 24px; 
+            border-radius: 4px; 
+            border: 1px solid var(--border-gray); 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            margin-bottom: 24px;
+        }
+
+        h3 { 
+            color: var(--deep-navy); 
+            font-size: 0.85rem; 
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            margin-top: 0;
+            margin-bottom: 20px;
+            border-left: 3px solid var(--gw-blue);
+            padding-left: 10px;
+        }
+
+        /* Scenario Buttons */
+        .scenario-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        
+        .scenario-btn { 
+            background: var(--white);
+            border: 1px solid var(--border-gray);
+            color: var(--text-main);
+            padding: 10px;
+            text-align: left;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+            font-size: 0.75rem;
+        }
+
+        .scenario-btn:hover { background: #f1f3f5; border-color: var(--gw-blue); }
+        .scenario-btn.active { background: var(--gw-blue); color: var(--white); border-color: var(--gw-blue); }
+
+        /* Zone Config */
+        .zone-config { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; border-bottom: 1px dashed var(--border-gray); padding-bottom: 15px; }
+        .zone-config label { grid-column: span 2; font-size: 0.7rem; color: var(--gw-blue); font-weight: bold; text-transform: uppercase; }
+
+        input { 
+            width: 100%; 
+            padding: 11px; 
+            border: 1px solid var(--border-gray); 
+            border-radius: 4px; 
+            font-size: 0.85rem;
+            box-sizing: border-box;
+        }
+
+        .btn-primary { 
+            background: var(--gw-blue); 
+            color: white; 
+            width: 100%; 
+            padding: 11px; 
+            border: none; 
+            border-radius: 4px; 
+            font-weight: 600; 
+            cursor: pointer;
+            transition: all 0.2s ease;
+            height: 42px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 0.8rem;
+        }
+
+        .btn-primary:hover { background: #0052a3; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+
+        #map { height: 450px; border-radius: 4px; border: 1px solid var(--border-gray); margin-bottom: 24px; }
+
+        .param-row { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 10px; align-items: center; margin-bottom: 12px; font-size: 0.8rem; }
+        .param-header { color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; border-bottom: 1px solid var(--border-gray); padding-bottom: 5px; }
+
+        pre { background: #212529; color: #74C0FC; padding: 20px; border-radius: 4px; overflow-x: auto; font-size: 0.75rem; }
+        
+        .alert-badge { 
+            padding: 6px 14px; 
+            border-radius: 20px; 
+            font-size: 0.7rem; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+        }
+        
+        .bg-breach { background: var(--breach); color: white; }
+        .bg-watch { background: var(--watch); color: white; }
+        .bg-live { background: var(--live); color: white; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🛡️ AEGIS AIOS | ARCHITECTURE ORCHESTRATOR</h1>
+        <div class="system-status">
+            <div class="status-dot"></div>
+            <span>LIVE ENVIRONMENT</span>
+        </div>
+    </header>
+
+    <main>
+        <div class="grid-main">
+            <!-- Left Column: Controls -->
+            <aside>
+                <div class="card">
+                    <h3>Worker + Scenario Control</h3>
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 8px;">ACTIVE WORKER</label>
+                        <select id="worker-select" onchange="syncWorker()" style="width: 100%; padding: 10px; border: 1px solid var(--border-gray); border-radius: 4px; font-size: 0.85rem;">
+                            <option value="">Loading workers...</option>
+                        </select>
+                    </div>
+                    <div class="scenario-grid" id="scenario-container">
+                        <button class="scenario-btn" onclick="applyScenario('normal', this)">✅ Normal Day</button>
+                        <button class="scenario-btn" onclick="applyScenario('light_rain', this)">🌦️ Light Rain</button>
+                        <button class="scenario-btn" onclick="applyScenario('heavy_rain', this)">🌧️ Heavy Rain (80%)</button>
+                        <button class="scenario-btn" onclick="applyScenario('severe_flood', this)">🌊 Severe Flood (100%)</button>
+                        <button class="scenario-btn" onclick="applyScenario('hazardous_aqi', this)">💨 Haz. AQI (80%)</button>
+                        <button class="scenario-btn" onclick="applyScenario('gps_fraud', this)">🚨 GPS Fraud (BANNED)</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Trigger Alert Test</h3>
+                    <p style="font-size: 0.75rem; color: #666; margin-bottom: 12px;">
+                        Test the current scenario alerts before triggering in the app
+                    </p>
+                    <button class="btn-primary" onclick="testAlerts()">🔍 TEST ALERTS</button>
+                    <div id="test-result" style="margin-top: 12px; display: none;"></div>
+                </div>
+
+                <div class="card">
+                    <h3>Metrics Baselines</h3>
+                    <div class="param-row param-header">
+                        <div>Metric</div><div>Val</div><div>Min</div><div>Max</div>
+                    </div>
+                    <div id="param-list"></div>
+                </div>
+            </aside>
+
+            <!-- Right Column: Results -->
+            <section>
+                <div id="map"></div>
+                
+                <div class="card">
+                    <h3>Geospatial Orchestration</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 220px; gap: 20px; align-items: flex-end;">
+                        <div>
+                            <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 8px;">TARGET LATITUDE</label>
+                            <input type="number" id="sim_lat" value="13.0827" step="0.0001">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 8px;">TARGET LONGITUDE</label>
+                            <input type="number" id="sim_lon" value="80.2707" step="0.0001">
+                        </div>
+                        <div>
+                            <button class="btn-primary" onclick="fetchRiskData()">RUN SYSTEM ANALYSIS</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="results-card" style="display: none;">
+                    <div id="summary"></div>
+                    <div class="card">
+                        <h3>System Payload (Real-Time Orchestration)</h3>
+                        <pre id="raw-json"></pre>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
