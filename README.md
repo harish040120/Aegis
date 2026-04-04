@@ -10,6 +10,7 @@
 
 ---
 
+**Link :**[](https://youtu.be/KMynI2_Qqoc?si=a-GPvAN5W_LLJ3Hg)
 ## 1. Project Overview & Vision
 
 Aegis is a **real-time, AI-powered parametric insurance platform** purpose-built for gig economy workers — delivery partners, ride-share drivers, and daily-wage earners who earn only when they work and have no safety net when external disruptions force them to stop.
