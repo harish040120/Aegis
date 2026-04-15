@@ -1,211 +1,217 @@
+// lib/services/api_service.dart
+
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../utils/constants.dart';
+import '../models/models.dart';
+
+class ApiException implements Exception {
+  final String message;
+  final int? statusCode;
+  ApiException(this.message, {this.statusCode});
+
+  @override
+  String toString() => 'ApiException($statusCode): $message';
+}
 
 class ApiService {
-  static String get baseUrl => 'http://localhost:8010';
-  static String get hubUrl => 'http://localhost:3015';
+  final String? token;
 
-  static Map<String, String> get _headers => {'Content-Type': 'application/json'};
+  ApiService({this.token});
 
-  // ─── v6.0 LOGIN & AUTH ─────────────────────────────────────────────────────────
-  static Future<Map<String, dynamic>> login(String workerId, String phone) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/api/v1/login'),
-      headers: _headers,
-      body: jsonEncode({'worker_id': workerId, 'phone': phone}),
-    );
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('Login failed: ${res.body}');
+  Map<String, String> get _headers => {
+    'Content-Type': 'application/json',
+    if (token != null) 'Authorization': 'Bearer $token',
+  };
+
+  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
+    final uri = Uri.parse('${ApiConfig.baseUrl}$path');
+    final res = await http
+        .post(uri, headers: _headers, body: jsonEncode(body))
+        .timeout(ApiConfig.timeout);
+    _checkStatus(res);
+    return jsonDecode(res.body);
   }
 
-  static Future<Map<String, dynamic>> verifyOtp(String workerId, String sessionId, String otpCode) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/api/v1/verify-otp'),
-      headers: _headers,
-      body: jsonEncode({'worker_id': workerId, 'session_id': sessionId, 'otp_code': otpCode}),
-    );
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('OTP verification failed: ${res.body}');
+  Future<dynamic> _get(String path) async {
+    final uri = Uri.parse('${ApiConfig.baseUrl}$path');
+    final res = await http
+        .get(uri, headers: _headers)
+        .timeout(ApiConfig.timeout);
+    _checkStatus(res);
+    return jsonDecode(res.body);
   }
 
-  // ─── v6.0 REGISTRATION ─────────────────────────────────────────────────────
-  static Future<Map<String, dynamic>> registerProfile({
+  void _checkStatus(http.Response res) {
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      Map<String, dynamic> body = {};
+      try { body = jsonDecode(res.body); } catch (_) {}
+      throw ApiException(
+        body['detail'] ?? body['message'] ?? 'Request failed',
+        statusCode: res.statusCode,
+      );
+    }
+  }
+
+  // ─── Auth ──────────────────────────────────────────────────────────────────
+
+  Future<LoginResponse> login(String workerId, String phone) async {
+    final data = await _post('/login', {
+      'worker_id': workerId,
+      'phone': phone,
+    });
+    return LoginResponse.fromJson(data);
+  }
+
+  Future<bool> verifyOtp(String workerId, String sessionId, String otp) async {
+  final data = await _post('/verify-otp', {
+    'worker_id': workerId,
+    'session_id': int.parse(sessionId),
+    'otp_code': otp,
+  });
+
+  return data['status'] == 'AUTHENTICATED';
+}
+
+  // ─── Registration ──────────────────────────────────────────────────────────
+
+  Future<String> registerProfile({
     required String workerId,
     required String name,
     required String platform,
-  }) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/api/v1/register/profile'),
-      headers: _headers,
-      body: jsonEncode({'worker_id': workerId, 'name': name, 'platform': platform}),
-    );
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('Profile registration failed: ${res.body}');
-  }
-
-  static Future<Map<String, dynamic>> registerIncome({
-    required String workerId,
-    required double avgEarnings12w,
-    required double targetDailyHours,
-  }) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/api/v1/register/income'),
-      headers: _headers,
-      body: jsonEncode({
-        'worker_id': workerId,
-        'avg_earnings_12w': avgEarnings12w,
-        'target_daily_hours': targetDailyHours,
-      }),
-    );
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('Income registration failed: ${res.body}');
-  }
-
-  static Future<Map<String, dynamic>> registerLocation({
-    required String workerId,
     required String city,
     required String zone,
-    required double lat,
-    required double lon,
   }) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/api/v1/register/location'),
-      headers: _headers,
-      body: jsonEncode({
-        'worker_id': workerId,
-        'city': city,
-        'zone': zone,
-        'lat': lat,
-        'lon': lon,
-      }),
-    );
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('Location registration failed: ${res.body}');
+    final data = await _post('/register/profile', {
+      'worker_id': workerId,
+      'name': name,
+      'platform': platform,
+      'city': city,
+      'zone': zone,
+    });
+    return data['registration_step'];
   }
 
-  static Future<Map<String, dynamic>> sessionPing({
+  Future<String> registerIncome({
     required String workerId,
-    required String sessionId,
+    required double avgEarnings12w,
+    required String upiId,
+  }) async {
+    final data = await _post('/register/income', {
+      'worker_id': workerId,
+      'avg_earnings_12w': avgEarnings12w,
+      'upi_id': upiId,
+    });
+    return data['registration_step'];
+  }
+
+  Future<String> registerLocation({
+    required String workerId,
     required double lat,
     required double lon,
-    double? hoursOnline,
-    double? movementKm,
+    required String zone,
   }) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/api/v1/session-ping'),
-      headers: _headers,
-      body: jsonEncode({
-        'worker_id': workerId,
-        'session_id': sessionId,
-        'lat': lat,
-        'lon': lon,
-        'hours_online': hoursOnline,
-        'movement_km': movementKm,
-      }),
-    );
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('Session ping failed: ${res.body}');
+    final data = await _post('/register/location', {
+      'worker_id': workerId,
+      'lat': lat,
+      'lon': lon,
+      'zone': zone,
+    });
+    return data['registration_step'];
   }
 
-  static Future<Map<String, dynamic>> getHome(String workerId) async {
-    final res = await http.get(
-      Uri.parse('$baseUrl/api/v1/home?worker_id=$workerId'),
-    );
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('Home fetch failed: ${res.body}');
+  Future<void> completeKyc(String workerId, String aadhaarNumber) async {
+    await _post('/complete-kyc', {
+      'worker_id': workerId,
+      'aadhaar_number': aadhaarNumber,
+    });
   }
 
-  // ─── v6.0 SUBSCRIPTION ─────────────────────────────────────────────────────
-  static Future<Map<String, dynamic>> subscribe({
+  // ─── Plan ──────────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> subscribe({
     required String workerId,
     required String planName,
     required double weeklyPremium,
-    String paymentRef = 'demo_payment',
+    required String paymentRef,
   }) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/api/v1/subscribe'),
-      headers: _headers,
-      body: jsonEncode({
-        'worker_id': workerId,
-        'plan_name': planName,
-        'weekly_premium': weeklyPremium,
-        'payment_ref': paymentRef,
-      }),
-    );
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('Subscription failed: ${res.body}');
+    return await _post('/subscribe', {
+      'worker_id': workerId,
+      'plan_name': planName,
+      'weekly_premium': weeklyPremium,
+      'payment_ref': paymentRef,
+    });
   }
 
-  static Future<Map<String, dynamic>> getPolicy(String workerId) async {
-    final res = await http.get(Uri.parse('$baseUrl/api/v1/worker/$workerId/policy'));
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('Policy fetch failed: ${res.body}');
+  // ─── Home ──────────────────────────────────────────────────────────────────
+
+  Future<HomeData> getHome(String workerId) async {
+    final data = await _get('/home?worker_id=$workerId');
+    return HomeData.fromJson(data);
   }
 
-  // ─── v6.0 KYC (OPTIONAL) ────────────────────────────────────────────
-  static Future<Map<String, dynamic>> completeKyc(String workerId, String aadhaarNumber) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/api/v1/complete-kyc'),
-      headers: _headers,
-      body: jsonEncode({'worker_id': workerId, 'aadhaar_number': aadhaarNumber}),
-    );
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('KYC failed: ${res.body}');
-  }
-
-  // ─── ANALYSIS ────────────────────────────────────────────────────────
-  static Future<Map<String, dynamic>> triggerAnalysis({
+  Future<AnalysisResult> analyze({
     required String workerId,
     required double lat,
     required double lon,
   }) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/api/v1/analyze'),
-      headers: _headers,
-      body: jsonEncode({'worker_id': workerId, 'lat': lat, 'lon': lon}),
-    );
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('Analysis failed: ${res.body}');
+    final data = await _post('/analyze', {
+      'worker_id': workerId,
+      'lat': lat,
+      'lon': lon,
+    });
+    return AnalysisResult.fromJson(data);
   }
 
-  // ─── DASHBOARD DATA ────────────────────────────────────────────────────
-  static Future<Map<String, dynamic>> getWorkerSummary(String workerId) async {
-    final res = await http.get(Uri.parse('$baseUrl/api/v1/worker/$workerId/summary'));
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('Summary fetch failed: ${res.body}');
+  // ─── Notifications ─────────────────────────────────────────────────────────
+
+  Future<List<AegisNotification>> getNotifications(String workerId) async {
+    final data = await _get('/notifications?worker_id=$workerId');
+    final list = data['notifications'] as List;
+    return list.map((e) => AegisNotification.fromJson(e)).toList();
   }
 
-  static Future<List<dynamic>> getPayouts(String workerId) async {
-    final res = await http.get(Uri.parse('$baseUrl/api/v1/worker/$workerId/payouts'));
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    return [];
+  Future<void> markNotificationRead(int notifId) async {
+    await _post('/notifications/read', {'notif_id': notifId});
   }
 
-  // ─── LEGACY ENDPOINTS (for backward compat) ────────────────────────────
-  static Future<Map<String, dynamic>> getWorkerByPhone(String phone) async {
-    final res = await http.get(Uri.parse('$baseUrl/api/v1/worker-by-phone?phone=$phone'));
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('Worker not found for phone: $phone');
+  // ─── Alerts ────────────────────────────────────────────────────────────────
+
+  Future<List<WeatherAlert>> getAlerts(String workerId) async {
+    final data = await _get('/current-alerts?worker_id=$workerId');
+    final list = data['alerts'] as List;
+    return list.map((e) => WeatherAlert.fromJson(e)).toList();
   }
 
-  static Future<Map<String, dynamic>> registerWorker(Map<String, dynamic> workerData) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/api/v1/register'),
-      headers: _headers,
-      body: jsonEncode(workerData),
-    );
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('Registration failed: ${res.body}');
+  // ─── Payouts ───────────────────────────────────────────────────────────────
+
+  Future<List<PayoutRecord>> getPayouts(String workerId) async {
+    final data = await _get('/worker/$workerId/payouts') as List;
+    return data.map((e) => PayoutRecord.fromJson(e)).toList();
   }
 
-  // ─── AI ASSISTANT ─────────────────────────────────────────────────
-  static Future<Map<String, dynamic>> chatWithAI(String workerId, String message) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/api/v1/assistant'),
-      headers: _headers,
-      body: jsonEncode({'worker_id': workerId, 'question': message}),
-    );
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception('AI chat failed: ${res.body}');
+  // ─── Coverage ──────────────────────────────────────────────────────────────
+
+  Future<CoverageData> getCoverage(String workerId) async {
+    final data = await _get('/coverage?worker_id=$workerId');
+    return CoverageData.fromJson(data);
+  }
+
+  // ─── Session Ping ──────────────────────────────────────────────────────────
+
+  Future<void> sessionPing({
+    required String workerId,
+    required double lat,
+    required double lon,
+    double movementKmDelta = 0,
+    int deliveriesDoneDelta = 0,
+  }) async {
+    await _post('/session-ping', {
+      'worker_id': workerId,
+      'lat': lat,
+      'lon': lon,
+      'movement_km_delta': movementKmDelta,
+      'deliveries_done_delta': deliveriesDoneDelta,
+    });
   }
 }
