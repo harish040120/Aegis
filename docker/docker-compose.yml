@@ -48,6 +48,8 @@ services:
       DATABASE_URL: postgresql://aegis_admin:aegis_secure_pass@database:5432/aegis_intelligence
       DATA_HUB_URL: http://backend-hub:3015/api/risk-data
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-demo}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
     ports:
       - "8010:8010"
     depends_on:

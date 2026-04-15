@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
@@ -10,6 +11,11 @@ import '../services/location_service.dart';
 enum AppState { initial, loading, authenticated, unauthenticated, error }
 
 class AegisProvider extends ChangeNotifier {
+  static const _storage = FlutterSecureStorage();
+  static const _workerIdKey = 'aegis_worker_id';
+  static const _workerPhoneKey = 'aegis_worker_phone';
+  static const _sessionTokenKey = 'aegis_session_token';
+
   AppState _appState = AppState.initial;
   Worker? _worker;
   WeatherData? _weather;
@@ -21,6 +27,9 @@ class AegisProvider extends ChangeNotifier {
   String? _workerName;
   String? _workerZone;
   String? _kycStatus;
+  String? _sessionToken;
+  String? _sessionId;
+  String? _registrationStep;
   
   double? _userLat;
   double? _userLon;
@@ -42,7 +51,7 @@ class AegisProvider extends ChangeNotifier {
   final Map<String, DateTime> _alertFirstDetected = {};
   final Set<String> _alreadyTriggeredPayouts = {};
 
-  AppState get appState        => _appState;
+  AppState get appState         => _appState;
   Worker?  get worker          => _worker;
   WeatherData? get weather     => _weather;
   RiskResult?  get riskResult  => _riskResult;
@@ -55,6 +64,8 @@ class AegisProvider extends ChangeNotifier {
   String?  get activePlanName  => _activePlanName;
   double?  get weeklyPremium   => _weeklyPremium;
   DateTime? get coverageEnd    => _coverageEnd;
+  String?  get sessionToken   => _sessionToken;
+  String?  get registrationStep => _registrationStep;
   
   double get basePremium       => _weeklyPremium ?? 34.0;
   Map<String, dynamic>? get lastResult => _lastAnalysisResult;
@@ -62,17 +73,19 @@ class AegisProvider extends ChangeNotifier {
   bool get loadingWeather      => _loadingWeather;
   bool get loadingAlerts       => _loadingAlerts;
   bool get loadingClaims       => _loadingClaims;
-  bool get isLoggedIn          => _workerId != null;
+  bool get isLoggedIn          => _workerId != null && _sessionToken != null;
   double get dynamicDailyBase  => (_worker?.weeklyEarningsAvg ?? 1800) / 8.0;
-
+  
   String get routeTarget {
-    if (_workerId == null)        return '/onboarding';
-    if (!_hasActivePlan)          return '/plan';
+    if (_workerId == null || _sessionToken == null) return '/login';
+    if (_registrationStep != 'DONE') return '/register';
+    if (!_hasActivePlan) return '/plan';
     return '/home';
   }
 
   Future<void> init() async {
     await initUserLocation();
+    await _restoreSession();
     if (_workerId != null) {
       await fetchActivePolicy();
     }
@@ -80,53 +93,97 @@ class AegisProvider extends ChangeNotifier {
   }
 
   void logout() {
-    _workerId = null; _workerName = null; _hasActivePlan = false;
-    _lastAnalysisResult = null; _claims = []; _appState = AppState.unauthenticated;
+    _workerId = null;
+    _workerName = null;
+    _sessionToken = null;
+    _sessionId = null;
+    _hasActivePlan = false;
+    _lastAnalysisResult = null;
+    _claims = [];
+    _appState = AppState.unauthenticated;
     _alertFirstDetected.clear();
     _alreadyTriggeredPayouts.clear();
     _stopAlertPolling();
+    _clearSession();
     notifyListeners();
   }
 
-  Future<String> requestOtp(String phone) async {
+  // ─── v6.0 LOGIN FLOW ────────────────────────────────────────────────────
+  Future<Map<String, dynamic>> login(String workerId, String phone) async {
     _appState = AppState.loading;
     notifyListeners();
-    _demoOtp = (100000 + Random().nextInt(900000)).toString();
-    _appState = AppState.unauthenticated;
-    notifyListeners();
-    return _demoOtp!;
-  }
-
-  Future<void> verifyOtp(String phone, String otp) async {
-    if (otp != _demoOtp) throw Exception('Invalid OTP');
-    _appState = AppState.loading;
-    notifyListeners();
-
+    
     try {
-      final data = await ApiService.getWorkerByPhone(phone);
-      _mapWorkerData(data);
+      final data = await ApiService.login(workerId, phone);
+      _demoOtp = data['demo_otp'];
+      _sessionId = data['session_id']?.toString();
+      _workerId = workerId;
+      notifyListeners();
+      return {
+        'session_id': _sessionId,
+        'demo_otp': _demoOtp,
+      };
+    } catch (e) {
+      _appState = AppState.error;
+      _errorMessage = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> verifyOtp(String workerId, String sessionId, String otpCode) async {
+    if (otpCode.isEmpty) throw Exception('Please enter OTP');
+    
+    _appState = AppState.loading;
+    notifyListeners();
+    
+    try {
+      final data = await ApiService.verifyOtp(workerId, sessionId, otpCode);
+      _sessionToken = data['session_id']?.toString() ?? sessionId;
+      _registrationStep = data['registration_step']?.toString() ?? 'DONE';
+      _workerId = workerId;
+      
+      final workerData = data['worker'];
+      if (workerData != null) {
+        _workerId = workerData['worker_id'] ?? workerId;
+        _workerName = workerData['name'];
+        _workerZone = workerData['zone'];
+        _kycStatus = workerData['kyc_status'];
+        _registrationStep = workerData['registration_step'] ?? 'DONE';
+        _hasActivePlan = workerData['has_active_policy'] ?? false;
+      }
+      
+      await _persistSession();
       await fetchActivePolicy();
       await refreshAll();
+      
       _appState = AppState.authenticated;
+      notifyListeners();
     } catch (e) {
-      _workerId = null;
       _appState = AppState.unauthenticated;
+      _errorMessage = e.toString();
+      notifyListeners();
+      rethrow;
     }
-    notifyListeners();
   }
 
-  Future<void> register({
-    required String name, required String phone, required String platform,
-    required String city, required String zone, required String upiId,
+  // ─── v6.0 REGISTRATION FLOW ────────────────────────────────────────
+  Future<void> registerProfile({
+    required String name,
+    required String platform,
   }) async {
+    if (_workerId == null) return;
+    
     _appState = AppState.loading;
     notifyListeners();
+    
     try {
-      final data = await ApiService.register(
-        name: name, phone: phone, platform: platform,
-        city: city, zone: zone, upiId: upiId,
+      final data = await ApiService.registerProfile(
+        workerId: _workerId!,
+        name: name,
+        platform: platform,
       );
-      _mapWorkerData(data);
+      _registrationStep = 'INCOME';
       _appState = AppState.authenticated;
       notifyListeners();
     } catch (e) {
@@ -136,17 +193,138 @@ class AegisProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> registerIncome({
+    required double avgEarnings12w,
+    required double targetDailyHours,
+  }) async {
+    if (_workerId == null) return;
+    
+    _appState = AppState.loading;
+    notifyListeners();
+    
+    try {
+      await ApiService.registerIncome(
+        workerId: _workerId!,
+        avgEarnings12w: avgEarnings12w,
+        targetDailyHours: targetDailyHours,
+      );
+      _registrationStep = 'LOCATION';
+      _appState = AppState.authenticated;
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> registerLocation({
+    required String city,
+    required String zone,
+    double? lat,
+    double? lon,
+  }) async {
+    if (_workerId == null) return;
+    
+    _appState = AppState.loading;
+    notifyListeners();
+    
+    try {
+      await ApiService.registerLocation(
+        workerId: _workerId!,
+        city: city,
+        zone: zone,
+        lat: lat ?? _userLat ?? 13.0827,
+        lon: lon ?? _userLon ?? 80.2707,
+      );
+      _registrationStep = 'DONE';
+      await _persistSession();
+      await fetchActivePolicy();
+      _appState = AppState.authenticated;
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  // ─── SESSION & HOME ────────────────────────────────────────────
+  Future<void> fetchHomeData() async {
+    if (_workerId == null) return;
+    
+    try {
+      final data = await ApiService.getHome(_workerId!);
+      _mapHomeData(data);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('fetchHomeData error: $e');
+    }
+  }
+
+  void _mapHomeData(Map<String, dynamic> data) {
+    _workerId = data['worker_id'] ?? _workerId;
+    _workerName = data['name'];
+    _workerZone = data['zone'];
+    _registrationStep = data['registration_step'];
+    _hasActivePlan = data['has_active_policy'] ?? false;
+    
+    if (data['plan_name'] != null) {
+      _activePlanName = data['plan_name'];
+    }
+    if (data['coverage_end'] != null) {
+      _coverageEnd = DateTime.tryParse(data['coverage_end']);
+    }
+  }
+
   void _mapWorkerData(Map<String, dynamic> data) {
     _workerId      = data['worker_id'];
     _workerName    = data['name'];
-    _workerZone    = data['zone'];
-    _kycStatus     = data['kyc_status'];
+    _workerZone   = data['zone'];
+    _kycStatus    = data['kyc_status'];
+    _registrationStep = data['registration_step'];
     _hasActivePlan = data['has_active_policy'] ?? false;
     _worker = Worker.fromJson(data);
   }
 
-  Future<bool> subscribe({required String planTier, required double premium}) async {
+  Future<void> _persistSession() async {
+    if (_workerId == null) return;
+    await _storage.write(key: _workerIdKey, value: _workerId);
+    if (_sessionToken != null) {
+      await _storage.write(key: _sessionTokenKey, value: _sessionToken);
+    }
+  }
+
+  Future<void> _clearSession() async {
+    await _storage.delete(key: _workerIdKey);
+    await _storage.delete(key: _workerPhoneKey);
+    await _storage.delete(key: _sessionTokenKey);
+  }
+
+  Future<void> _restoreSession() async {
+    final savedWorkerId = await _storage.read(key: _workerIdKey);
+    final savedToken = await _storage.read(key: _sessionTokenKey);
+    
+    if (savedWorkerId == null || savedWorkerId.isEmpty) return;
+    if (savedToken == null || savedToken.isEmpty) return;
+    
+    try {
+      final data = await ApiService.getHome(savedWorkerId);
+      _workerId = savedWorkerId;
+      _sessionToken = savedToken;
+      _mapHomeData(data);
+    } catch (_) {
+      await _clearSession();
+    }
+  }
+
+  // ─── SUBSCRIPTION ──────────────────────────────────────────────
+  Future<bool> subscribe({
+    required String planTier,
+    required double premium,
+  }) async {
     if (_workerId == null) return false;
+    
     try {
       final data = await ApiService.subscribe(
         workerId: _workerId!,
@@ -161,11 +339,19 @@ class AegisProvider extends ChangeNotifier {
       
       if (_worker != null) {
         _worker = Worker(
-          id: _worker!.id, name: _worker!.name, phone: _worker!.phone,
-          platform: _worker!.platform, city: _worker!.city, zone: _worker!.zone,
-          kycComplete: _worker!.kycComplete, subscribed: true, upiId: _worker!.upiId,
-          weeklyEarningsAvg: _worker!.weeklyEarningsAvg, riskScore: _worker!.riskScore,
-          weeklyPremium: _weeklyPremium!, planTier: planTier,
+          id: _worker!.id,
+          name: _worker!.name,
+          phone: _worker!.phone,
+          platform: _worker!.platform,
+          city: _worker!.city,
+          zone: _worker!.zone,
+          kycComplete: _worker!.kycComplete,
+          subscribed: true,
+          upiId: _worker!.upiId,
+          weeklyEarningsAvg: _worker!.weeklyEarningsAvg,
+          riskScore: _worker!.riskScore,
+          weeklyPremium: _weeklyPremium!,
+          planTier: planTier,
         );
       }
       
@@ -192,6 +378,7 @@ class AegisProvider extends ChangeNotifier {
     }
   }
 
+  // ─── REFRESH & ALERTS ─────────────────────��─��─────────────────
   Future<void> refreshAll() async {
     if (_workerId == null) return;
     await Future.wait([
@@ -202,17 +389,11 @@ class AegisProvider extends ChangeNotifier {
   }
 
   Future<void> fetchClaims() async {
-    debugPrint('fetchClaims called. _workerId: $_workerId');
-    if (_workerId == null) {
-      debugPrint('fetchClaims: _workerId is null, returning');
-      return;
-    }
+    if (_workerId == null) return;
     _loadingClaims = true;
     notifyListeners();
     try {
-      debugPrint('Fetching payouts for worker: $_workerId');
       final list = await ApiService.getPayouts(_workerId!);
-      debugPrint('API returned ${list.length} payouts for $_workerId');
       _claims = list.map((j) => Claim.fromJson(j)).toList();
     } catch (e) {
       debugPrint('fetchClaims error: $e');
@@ -233,19 +414,15 @@ class AegisProvider extends ChangeNotifier {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final alertsData = data['alerts'] as List<dynamic>? ?? [];
-        
         final now = DateTime.now();
         final List<DisruptionAlert> detectedAlerts = [];
         final List<DisruptionAlert> confirmedAlerts = [];
         
         for (final alertData in alertsData) {
           final alertKey = alertData['type'] as String;
-          final isFraud = alertData['is_fraud'] == true;
-          
-          if (isFraud) continue;
+          if (alertData['is_fraud'] == true) continue;
           
           _alertFirstDetected.putIfAbsent(alertKey, () => now);
-          
           final detectedTime = _alertFirstDetected[alertKey]!;
           final minutesActive = now.difference(detectedTime).inMinutes;
           final isConfirmed = minutesActive >= 5;
@@ -268,7 +445,6 @@ class AegisProvider extends ChangeNotifier {
           );
           
           detectedAlerts.add(alert);
-          
           if (isConfirmed && !_alreadyTriggeredPayouts.contains(alertKey)) {
             confirmedAlerts.add(alert);
             _alreadyTriggeredPayouts.add(alertKey);
@@ -277,15 +453,11 @@ class AegisProvider extends ChangeNotifier {
         
         if (immediate) {
           _alerts = detectedAlerts;
-          
-          if (confirmedAlerts.isNotEmpty) {
-            for (final alert in confirmedAlerts) {
-              await _triggerPayoutForAlert(alert);
-            }
+          for (final alert in confirmedAlerts) {
+            await _triggerPayoutForAlert(alert);
           }
         } else {
           _alerts = detectedAlerts.where((alert) => alert.isActiveFor5Minutes).toList();
-          
           for (final alert in _alerts) {
             if (!_alreadyTriggeredPayouts.contains(alert.type)) {
               await _triggerPayoutForAlert(alert);
@@ -293,7 +465,6 @@ class AegisProvider extends ChangeNotifier {
             }
           }
         }
-        
         _cleanupOldAlerts();
       }
     } catch (e) {
@@ -316,8 +487,6 @@ class AegisProvider extends ChangeNotifier {
     if (_workerId == null) return;
     try {
       final coords = getCurrentCoords();
-      debugPrint('Triggering payout for alert: ${alert.typeLabel}');
-      
       final response = await http.post(
         Uri.parse('${ApiService.hubUrl}/api/trigger-payout'),
         headers: {'Content-Type': 'application/json'},
@@ -328,7 +497,6 @@ class AegisProvider extends ChangeNotifier {
           'lon': coords['lon'],
         }),
       );
-      
       if (response.statusCode == 200) {
         await Future.delayed(const Duration(milliseconds: 500));
         await fetchClaims();
@@ -373,12 +541,15 @@ class AegisProvider extends ChangeNotifier {
     super.dispose();
   }
 
+  // ─── ANALYSIS ────────────────────────────────────────────────
   Future<void> runAnalysis() async {
     if (_workerId == null) return;
     final coords = getCurrentCoords();
     try {
       final result = await ApiService.triggerAnalysis(
-        workerId: _workerId!, lat: coords['lat']!, lon: coords['lon']!,
+        workerId: _workerId!,
+        lat: coords['lat']!,
+        lon: coords['lon']!,
       );
       _lastAnalysisResult = result;
       
@@ -395,9 +566,8 @@ class AegisProvider extends ChangeNotifier {
           dailyCoverage: (payout['amount'] as num).toDouble(),
           maxWeekly: (payout['amount'] as num).toDouble() * 7.0,
           breakdown: {
-            'Fraud Score': (analytics['fraud']['score'] as num).toDouble(),
-            'Fraud Level': analytics['fraud']['level'] ?? 'CLEAN',
             'Income Drop': '${(analytics['income']['drop'] as num).toDouble()}%',
+            'Income Severity': analytics['income']['severity'] ?? 'LOW',
             'Trigger': payout['trigger'] ?? 'Base Coverage',
             'Status': result['status'] ?? 'APPROVED',
           },
@@ -441,6 +611,7 @@ class AegisProvider extends ChangeNotifier {
     return 'Clear';
   }
 
+  // ─── LOCATION HELPERS ────────────────────────────────────────
   Map<String, double> _getZoneCoords(String zone) {
     const coords = {
       'Chennai-North':   {'lat': 13.1123, 'lon': 80.2981},
@@ -458,14 +629,11 @@ class AegisProvider extends ChangeNotifier {
       if (position != null) {
         _userLat = position.latitude;
         _userLon = position.longitude;
-        
-        // Detect zone from coordinates
         final detectedZone = LocationService.detectZoneFromCoords(_userLat!, _userLon!);
         _workerZone = detectedZone;
         notifyListeners();
       }
     } catch (_) {
-      // Use default zone if location fails
       _workerZone = 'Chennai-Central';
     }
   }
@@ -474,16 +642,20 @@ class AegisProvider extends ChangeNotifier {
     if (_userLat != null && _userLon != null) {
       return {'lat': _userLat!, 'lon': _userLon!};
     }
-    return getCurrentCoords();
+    return _getZoneCoords(_workerZone ?? 'Chennai-Central');
   }
 
   Future<Map<String, dynamic>> getZoneFromGps(double lat, double lon) async {
-    return await ApiService.getZoneInfo(lat, lon);
+    return {
+      'city': 'Chennai',
+      'zone': LocationService.detectZoneFromCoords(lat, lon)
+    };
   }
 
+  // ─── CLAIMS & KYC ─────────────────────────────────────────────
   Future<void> completeKyc(String aadhaarNumber) async {
     if (_workerId == null) return;
-    await ApiService.completeKyc(workerId: _workerId!, aadhaarNumber: aadhaarNumber);
+    await ApiService.completeKyc(_workerId!, aadhaarNumber);
     notifyListeners();
   }
 
@@ -502,7 +674,6 @@ class AegisProvider extends ChangeNotifier {
         }),
       );
       if (response.statusCode == 200) {
-        debugPrint('Claim submitted successfully');
         await fetchClaims();
       }
     } catch (e) {
@@ -513,7 +684,6 @@ class AegisProvider extends ChangeNotifier {
   Future<void> triggerClaimAndPayout(String alertType) async {
     if (_workerId == null) return;
     final coords = getCurrentCoords();
-    
     try {
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/api/v1/submit-claim'),
@@ -525,7 +695,6 @@ class AegisProvider extends ChangeNotifier {
           'lon': coords['lon'],
         }),
       );
-      
       if (response.statusCode == 200) {
         await fetchClaims();
         await fetchAlerts(immediate: true);

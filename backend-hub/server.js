@@ -15,10 +15,10 @@ const pool = new Pool({
     port: parseInt(process.env.DB_PORT) || 2003,
 });
 
-const WAQI_API_KEY = process.env.WAQITEL_API_KEY || process.env.WAQTL_API_KEY || process.env.WAQI_API_KEY || "";
+const WAQI_API_KEY = process.env.WAQI_API_KEY || "";
 const WEATHER_API_KEY = process.env.WEATHER_API_KEY || "";
 
-app.use(cors());
+app.use(cors({ origin: ['http://localhost:2000', 'http://localhost:3000'], credentials: true }));
 app.use(express.json());
 
 // --- Simulation State ---
@@ -151,6 +151,10 @@ app.get('/api/risk-data', async (req, res) => {
             } catch (e) { return null; }
         })(),
         pool.query('SELECT avg_earnings_12w, avg_orders_7d, target_daily_hours, zone FROM workers WHERE worker_id = $1', [wId])
+            .catch(() => {
+                console.warn(`[WARN] DB baseline fetch failed for ${wId}, using defaults`);
+                return { rows: [] };
+            })
     ]);
 
     const b = baselines.rows[0] || { avg_earnings_12w: 1800, avg_orders_7d: 14, target_daily_hours: 8.0, zone: "Chennai-Central" };
@@ -280,23 +284,35 @@ app.get('/api/current-alerts', (req, res) => {
 });
 
 app.post('/api/trigger-payout', async (req, res) => {
-    const { worker_id, alert_type, lat, lon } = req.body;
+    const { worker_id, alert_type, lat, lon, amount, risk_level, fraud_score, trigger_pct } = req.body;
     const wId = worker_id || activeWorkerId;
     
     try {
-        const payoutAmount = 500;
-        
-        await pool.query(
-            `INSERT INTO payouts (worker_id, amount, risk_level, income_severity, fraud_level, fraud_score, payout_status, trigger_pct, hourly_rate, hours_lost, trigger_type) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-            [wId, payoutAmount, 'LOW', 'MODERATE', 'CLEAN', 0.05, 'APPROVED', 0.10, 225.0, 8.0, 'Manual Trigger']
+        const policyRes = await pool.query(
+            `SELECT policy_id FROM policies WHERE worker_id=$1 AND status='ACTIVE' LIMIT 1`,
+            [wId]
         );
-        
-        res.json({
-            success: true,
-            payout: { amount: payoutAmount, trigger: 'Manual Trigger' },
-            message: `Payout of ₹${payoutAmount} added for ${wId}`
-        });
+        const policyId = policyRes.rows[0]?.policy_id || null;
+        const payoutAmount = amount || 480;
+        const result = await pool.query(
+            `INSERT INTO payouts 
+             (worker_id, policy_id, trigger_type, trigger_pct, amount, risk_level, 
+              fraud_score, fraud_level, payout_status, gps_lat, gps_lng)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'APPROVED',$9,$10)
+             RETURNING payout_id`,
+            [wId, policyId, alert_type || 'Manual Trigger', 
+             trigger_pct || 0.80, payoutAmount, 
+             risk_level || 'HIGH', fraud_score || 0.05,
+             fraud_score > 0.3 ? 'MODERATE' : 'LOW',
+             lat || null, lon || null]
+        );
+        await pool.query(
+            `INSERT INTO audit_log (event_type, entity_type, entity_id, worker_id, action_by, severity, message)
+             VALUES ('PAYOUT_APPROVED','PAYOUT',$1,$2,'SYSTEM','INFO',$3)`,
+            [result.rows[0].payout_id.toString(), wId, 
+             `Auto payout ₹${payoutAmount} for ${alert_type}`]
+        );
+        res.json({ success: true, payout_id: result.rows[0].payout_id, amount: payoutAmount });
     } catch (err) {
         res.status(500).json({ 
             error: err.message,
@@ -305,7 +321,20 @@ app.post('/api/trigger-payout', async (req, res) => {
     }
 });
 
-// --- Static files LAST ---
-app.use(express.static('public'));
+app.get('/api/payout-exists/:workerId/:date', async (req, res) => {
+    const { workerId, date } = req.params;
+    try {
+        const result = await pool.query(
+            `SELECT COUNT(*) as cnt FROM payouts 
+             WHERE worker_id = $1 
+             AND DATE(triggered_at) = $2 
+             AND payout_status IN ('APPROVED','PAID')`,
+            [workerId, date]
+        );
+        res.json({ exists: parseInt(result.rows[0].cnt) > 0 });
+    } catch (err) {
+        res.status(500).json({ exists: false, error: err.message });
+    }
+});
 
 app.listen(PORT, () => console.log(`🚀 Scenario Hub Port ${PORT}`));

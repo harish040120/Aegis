@@ -1,39 +1,58 @@
-import React, { useState } from 'react';
-import { 
-  LayoutDashboard, Users, CreditCard, 
-  Zap, BrainCircuit, ShieldAlert, Banknote, FileText, Search
+import React, { useEffect, useState } from 'react';
+import {
+  LayoutDashboard,
+  Zap,
+  ShieldAlert,
+  Banknote,
+  Search
 } from 'lucide-react';
 
 // CSS Import (Ensuring global styles are loaded)
 import './index.css';
 
 // Page Imports
-import { SystemOverview } from './pages/SystemOverview';
-import { Workers } from './pages/Workers';
-import { Financials } from './pages/Financials';
-import { Triggers } from './pages/Triggers';
-import { AIPredictions } from './pages/AIPredictions';
+import { Dashboard } from './pages/Dashboard';
+import { Scenario } from './pages/Scenario';
 import { Fraud } from './pages/Fraud';
 import { Payouts } from './pages/Payouts';
-import { Policies } from './pages/Policies';
 
-type ViewType = 'Overview' | 'Workers' | 'Financials' | 'Triggers' | 'AI Predictions' | 'Fraud' | 'Payouts' | 'Policy Controls';
+type ViewType = 'Dashboard' | 'Scenario' | 'Payouts' | 'Fraud';
 
 const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<ViewType>('Overview');
+  const [currentView, setCurrentView] = useState<ViewType>('Dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  const viewToHash = (view: ViewType) => {
+    switch (view) {
+      case 'Dashboard': return '#/';
+      case 'Scenario': return '#/scenario';
+      case 'Payouts': return '#/payouts';
+      case 'Fraud': return '#/fraud';
+      default: return '#/';
+    }
+  };
+
+  const hashToView = (hash: string): ViewType => {
+    if (hash.startsWith('#/scenario')) return 'Scenario';
+    if (hash.startsWith('#/payouts')) return 'Payouts';
+    if (hash.startsWith('#/fraud')) return 'Fraud';
+    return 'Dashboard';
+  };
+
+  useEffect(() => {
+    const syncFromHash = () => setCurrentView(hashToView(window.location.hash));
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, []);
 
   const renderContent = () => {
     switch (currentView) {
-      case 'Overview':        return <SystemOverview />;
-      case 'Workers':         return <Workers />;
-      case 'Financials':      return <Financials />;
-      case 'Triggers':        return <Triggers />;
-      case 'AI Predictions':  return <AIPredictions />;
+      case 'Dashboard':       return <Dashboard />;
+      case 'Scenario':        return <Scenario />;
       case 'Fraud':           return <Fraud />;
       case 'Payouts':         return <Payouts />;
-      case 'Policy Controls': return <Policies />;
-      default:                return <SystemOverview />;
+      default:                return <Dashboard />;
     }
   };
 
@@ -41,7 +60,10 @@ const App: React.FC = () => {
     const active = currentView === id;
     return (
       <button 
-        onClick={() => setCurrentView(id)}
+        onClick={() => {
+          setCurrentView(id);
+          window.location.hash = viewToHash(id);
+        }}
         className={`w-full flex items-center justify-between px-6 py-3 transition-all duration-200 group ${
           active 
             ? 'bg-[#002B54] text-white border-l-4 border-[var(--gw-blue)] shadow-[inset_4px_0_0_0_var(--gw-blue)]' 
@@ -76,31 +98,28 @@ const App: React.FC = () => {
         </div>
 
         <nav className="flex-1 overflow-y-auto py-6 custom-scrollbar overflow-x-hidden">
-          <div className={`px-6 pb-2 text-[10px] font-black text-slate-500 uppercase tracking-widest ${!sidebarOpen && 'text-center px-0'}`}>
-            {sidebarOpen ? '1. System' : '1'}
-          </div>
-          <NavItem id="Overview" label="Overview" icon={LayoutDashboard} />
-          <NavItem id="Workers" label="Workers" icon={Users} />
-          <NavItem id="Financials" label="Financials" icon={CreditCard} />
-          
-          <div className={`px-6 pt-8 pb-2 text-[10px] font-black text-slate-500 uppercase tracking-widest ${!sidebarOpen && 'text-center px-0'}`}>
-            {sidebarOpen ? '2. Operations' : '2'}
-          </div>
-          <NavItem id="Triggers" label="Triggers" icon={Zap} />
-          <NavItem id="AI Predictions" label="AI Predictions" icon={BrainCircuit} />
-          <NavItem id="Fraud" label="Fraud" icon={ShieldAlert} badge="18" badgeColor="bg-[var(--red-alert)]" />
-          <NavItem id="Payouts" label="Payouts" icon={Banknote} badge="Live" badgeColor="bg-[var(--teal-accent)]" />
-          
-          <div className={`px-6 pt-8 pb-2 text-[10px] font-black text-slate-500 uppercase tracking-widest ${!sidebarOpen && 'text-center px-0'}`}>
-            {sidebarOpen ? '3. Admin' : '3'}
-          </div>
-          <NavItem id="Policy Controls" label="Policy Controls" icon={FileText} />
+           <div className={`px-6 pb-2 text-[10px] font-black text-slate-500 uppercase tracking-widest ${!sidebarOpen && 'text-center px-0'}`}>
+             {sidebarOpen ? 'AEGIS AIOS' : 'AIOS'}
+           </div>
+           <NavItem id="Dashboard" label="Dashboard" icon={LayoutDashboard} />
+
+           <div className={`px-6 pt-8 pb-2 text-[10px] font-black text-slate-500 uppercase tracking-widest ${!sidebarOpen && 'text-center px-0'}`}>
+             {sidebarOpen ? 'OPERATIONS' : 'OPS'}
+           </div>
+           <NavItem id="Scenario" label="Scenario" icon={Zap} />
+           <NavItem id="Payouts" label="Payouts" icon={Banknote} badge="Live" badgeColor="bg-[var(--teal-accent)]" />
+           <NavItem id="Fraud" label="Fraud" icon={ShieldAlert} badge="8" badgeColor="bg-[var(--red-alert)]" />
         </nav>
 
         <div className="p-6 bg-black/20 border-t border-white/5">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-[var(--teal-accent)] animate-pulse shrink-0" />
-            {sidebarOpen && <span className="text-[10px] font-black tracking-widest text-white/40 uppercase">LIVE SYNC</span>}
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded bg-[var(--gw-blue)] text-white flex items-center justify-center font-bold text-sm">AD</div>
+            {sidebarOpen && (
+              <div>
+                <p className="text-[12px] font-bold text-white leading-none">Aegis Admin</p>
+                <p className="text-[9px] font-bold text-white/50 uppercase tracking-widest leading-none mt-1">Ops Lead</p>
+              </div>
+            )}
           </div>
         </div>
       </aside>

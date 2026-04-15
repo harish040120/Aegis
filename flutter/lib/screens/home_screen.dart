@@ -66,7 +66,10 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const ChatScreen()),
+                MaterialPageRoute(
+                  builder: (_) => const ChatScreen(),
+                  settings: RouteSettings(arguments: {'worker_id': prov.workerId}),
+                ),
               );
             },
           );

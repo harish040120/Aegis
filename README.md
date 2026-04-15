@@ -1,12 +1,29 @@
 # Aegis — AI-Powered Parametric Wage Protection for Gig Workers
 
-> **Guidewire DEVTrails 2026 | Phase 1 Submission**
+> **Guidewire DEVTrails 2026 | Phase 3 Submission**
 
 > **Team Name:** Zero Noise Crew
 
 > **Persona:** Food Delivery
 
 > Platform: Mobile-first (Flutter) · Architecture: B2C with Platform Data Integration
+
+## 0. Phase 3 Quickstart (Docker)
+
+```bash
+cp docker/.env.example docker/.env
+cp backend-hub/.env.example backend-hub/.env
+cp model-backend/backend/.env.example model-backend/backend/.env
+docker compose -f docker/docker-compose.yml up --build
+```
+
+- Admin UI: `http://localhost:2000`
+- Model backend: `http://localhost:8010/health`
+- Backend hub: `http://localhost:3015/health`
+- Postgres: `localhost:2003` (db: `aegis_intelligence`)
+- Schema: auto-applied from `aegis_schema.sql` via `docker/database/Dockerfile`
+
+If you want live payouts, set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in `docker/.env`. Otherwise payouts run in simulated mode.
 
 ---
 
@@ -991,75 +1008,35 @@ The backend endpoint (`/api/v1/worker/{worker_id}/payouts`) returns all past pay
 
 ### 13.3 Admin Dashboard Visibility
 
-The **Payouts page** in the React admin dashboard (`frontend-admin/src/pages/Payouts.tsx`) fetches live payout data:
+The React admin dashboard (`frontend-admin/src/App.tsx`) exposes four pages:
 
-- Endpoint: `/api/v1/payouts/today-summary` (aggregated)
-- Endpoint: `/api/v1/payouts` (detailed list from database)
-
-Admins can see:
-- Today's total payout amount
-- Number of triggers activated
-- Individual payout details (worker, amount, trigger, status)
-
-Admin Dashboard Logic
+- **Dashboard** (`frontend-admin/src/pages/Dashboard.tsx`)
+  - Fetches `/api/v1/admin/stats` for KPIs, recent payouts, fraud watchlist, and active alerts.
+- **Scenario** (`frontend-admin/src/pages/Scenario.tsx`)
+  - Calls `/api/scenario` and `/api/params` on the Backend Hub for simulation inputs.
+  - Runs `/api/v1/analyze` on the model backend and can trigger `/api/v1/razorpay/payout`.
+- **Payouts** (`frontend-admin/src/pages/Payouts.tsx`)
+  - Uses `/api/v1/admin/stats` to render the live payout ledger.
+  - Can call `/api/trigger-payout` on the Backend Hub for manual test payouts.
+- **Fraud** (`frontend-admin/src/pages/Fraud.tsx`)
+  - Uses `/api/v1/admin/stats` and `/api/v1/admin/fraud-action` for hold/ban/clear actions.
 
 ### 13.4 Navigation Structure
 
-The React admin dashboard (`frontend-admin/src/App.tsx`) uses a sidebar-based router:
+The admin UI uses a compact hash-based router with four routes:
 
 ```
-🛡️ AEGIS AIOS | ARCHITECTURE ORCHESTRATOR
-
-1. SYSTEM
-├── Overview       → SystemOverview.tsx (KPIs, charts)
-├── Workers        → Workers.tsx (worker registry)
-└── Financials     → Financials.tsx (revenue, premiums)
-
-2. OPERATIONS
-├── Triggers       → Triggers.tsx (manual scenario simulation)
-├── AI Predictions → AIPredictions.tsx (ML model outputs)
-├── Fraud          → Fraud.tsx (fraud alerts, banned workers)
-├── Payouts        → Payouts.tsx (live payout ledger)
-└── Policy Controls → Policies.tsx (policy management)
-
-3. ADMIN
-└── (Policy administration)
+#/           → Dashboard
+#/scenario   → Scenario
+#/payouts    → Payouts
+#/fraud      → Fraud
 ```
 
-### 13.5 Key Pages Logic
+### 13.5 Real-Time Monitoring
 
-#### System Overview (`SystemOverview.tsx`)
-- Fetches `/api/v1/workers/count`
-- Fetches `/api/v1/policies/active-count`
-- Fetches `/api/v1/payouts/today-summary`
-- Displays KPI cards and trend charts
-
-#### Workers (`Workers.tsx`)
-- Fetches paginated worker list
-- Shows: name, phone, zone, kyc_status, avg_earnings_12w, created_at
-- Search/filter by zone, platform, KYC status
-
-#### Payouts (`Payouts.tsx`)
-- Fetches `/api/v1/payouts` (or filtered endpoint)
-- Displays: worker_id, amount, trigger_type, trigger_pct, payout_status, triggered_at
-- Real-time updates (refresh button or polling)
-
-#### Fraud (`Fraud.tsx`)
-- Fetches workers with high fraud scores (> 0.3)
-- Actions: HOLD (review), BAN (permanent block)
-- Shows: fraud_score, fraud_level, recent activity
-
-#### Triggers (`Triggers.tsx`)
-- Admin can simulate scenarios by calling `/api/scenario` on Data Hub
-- Scenarios: normal, light_rain, heavy_rain, severe_flood, hazardous_aqi, gps_fraud
-- This affects subsequent analysis results
-
-### 13.6 Real-Time Monitoring
-
-The admin dashboard uses **polling** or **SSE** (if implemented) to get live data:
-- Every 30 seconds: refresh payout summary
-- On page load: fetch all critical KPIs
-- Manual refresh: buttons on each page
+The admin dashboard relies on manual refresh actions and lightweight polling where needed:
+- Dashboard KPI refresh uses `/api/v1/admin/stats`
+- Payouts and Fraud pages refetch after actions (manual trigger or fraud action)
 
 ## 14. AI Chatbot — Aegis Assistant
 

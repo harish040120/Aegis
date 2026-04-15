@@ -1,127 +1,128 @@
-import React from 'react';
-import { ShieldAlert, ShieldX, UserX, AlertTriangle, Search, Activity } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
+import { apiGet, apiPost } from '../services/api';
+
+type AdminStats = {
+  fraud_watchlist: Array<{
+    worker_id: string;
+    name: string;
+    fraud_score: number;
+    fraud_level: string;
+    trigger_type: string;
+    amount: number;
+    status: string;
+    triggered_at: string;
+  }>;
+};
 
 export const Fraud: React.FC = () => {
-  // Mock data for professional display
-  const stats = [
-    { label: 'Fraud Flags', value: '18', sub: 'Detected Today', icon: AlertTriangle, color: 'red' },
-    { label: 'Terminated', value: '3', sub: 'Hard Blocked', icon: UserX, color: 'red' },
-    { label: 'Avg Risk Score', value: '0.12', sub: 'Behavioral Baseline', icon: ShieldAlert, color: 'teal' },
-    { label: 'Shield Efficiency', value: '94.2%', sub: 'True Positive Rate', icon: Activity, color: 'blue' },
-  ];
+  const [stats, setStats] = useState<AdminStats>({ fraud_watchlist: [] });
+  const [loading, setLoading] = useState(false);
 
-  const signals = [
-    { id: 'WK-4821', type: 'Mock GPS', score: 0.71, action: 'BANNED', time: '12m ago', details: 'Simulated location outside delivery zone' },
-    { id: 'WK-9022', type: 'Device Spoof', score: 0.65, action: 'HELD', time: '45m ago', details: 'Multiple device IDs for same worker' },
-    { id: 'WK-1102', type: 'Static Signal', score: 0.52, action: 'WATCH', time: '1h ago', details: 'Location not moving for 4+ hours' },
-    { id: 'WK-3142', type: 'Session Spike', score: 0.48, action: 'WATCH', time: '2h ago', details: 'Unusual session duration pattern' },
-    { id: 'WK-7721', type: 'Velocity Anomaly', score: 0.42, action: 'WATCH', time: '3h ago', details: 'Speed exceeds delivery vehicle limits' },
-    { id: 'WK-2234', type: 'Order Pattern', score: 0.38, action: 'WATCH', time: '4h ago', details: 'Suspicious order cluster detected' },
-  ];
+  const fetchStats = async () => {
+    setLoading(true);
+    try {
+      const data = await apiGet('/api/v1/admin/stats');
+      setStats({ fraud_watchlist: data.fraud_watchlist || [] });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const defenseLayers = [
-    { name: 'GPS Spatio-Temporal', status: 'Hardened', lastScan: '2 min ago', threats: 0 },
-    { name: 'Device Hardware Hash', status: 'Hardened', lastScan: '5 min ago', threats: 2 },
-    { name: 'Velocity Checks', status: 'Active', lastScan: '1 min ago', threats: 1 },
-    { name: 'Behavioral Pattern', status: 'Active', lastScan: '3 min ago', threats: 3 },
-  ];
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const highRisk = useMemo(
+    () => stats.fraud_watchlist.filter((w) => (w.fraud_score || 0) > 0.6),
+    [stats.fraud_watchlist]
+  );
+
+  const doAction = async (worker_id: string, action: 'hold' | 'ban' | 'clear') => {
+    await apiPost(`/api/v1/admin/fraud-action?worker_id=${worker_id}&action=${action}`, {}, 'ML');
+    await fetchStats();
+  };
+
+  const terminateHighRisk = async () => {
+    await Promise.all(highRisk.map((w) => doAction(w.worker_id, 'ban')));
+  };
 
   return (
     <div className="p-8 flex flex-col gap-8 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-[var(--deep-navy)] tracking-tight uppercase">Fraud Security</h1>
-          <p className="text-[var(--color-text-muted)] text-[10px] font-bold uppercase tracking-widest mt-1">Behavioral Integrity & Anomaly Mitigation</p>
+          <h1 className="text-2xl font-black text-[var(--deep-navy)] tracking-tight uppercase">Fraud</h1>
+          <p className="text-[var(--color-text-muted)] text-[10px] font-bold uppercase tracking-widest mt-1">Behavioral Integrity & Actions</p>
         </div>
         <div className="flex gap-3">
-          <button className="px-4 py-2 bg-white border border-slate-200 rounded text-[10px] font-black uppercase tracking-widest text-[var(--red-alert)] hover:bg-red-50 transition-all">
-            Terminate High Risk
+          <button
+            onClick={terminateHighRisk}
+            className="px-4 py-2 bg-white border border-slate-200 rounded text-[10px] font-black uppercase tracking-widest text-[var(--red-alert)] hover:bg-red-50 transition-all"
+          >
+            Terminate All HIGH Risk
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((s) => (
-          <div key={s.label} className="metric-card border-l-4 border-slate-50 hover:border-[var(--gw-blue)]">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{s.label}</p>
-            <h2 className="text-2xl font-black text-[var(--deep-navy)] data-mono mt-1">{s.value}</h2>
-            <p className="text-[9px] font-bold text-slate-400 mt-2 uppercase">{s.sub}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Signal Log */}
-        <div className="lg:col-span-2 metric-card !p-0 overflow-hidden">
-          <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-white">
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Fraud Signal Stream</h3>
-            <div className="relative">
-               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
-               <input type="text" placeholder="SEARCH ID..." className="pl-7 pr-3 py-1 bg-slate-50 border-none rounded text-[9px] font-bold tracking-widest outline-none focus:ring-1 focus:ring-[var(--gw-blue)]" />
-            </div>
-          </div>
-          <table className="high-density-table">
-            <thead>
+      <div className="metric-card !p-0 overflow-hidden">
+        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-white">
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Fraud Watchlist</h3>
+          <span className="status-pill status-live">{loading ? 'Syncing' : 'Live'}</span>
+        </div>
+        <table className="high-density-table">
+          <thead>
+            <tr>
+              <th>Worker ID</th>
+              <th>Name</th>
+              <th>Fraud Score</th>
+              <th>Fraud Level</th>
+              <th>Last Trigger</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stats.fraud_watchlist.length === 0 ? (
               <tr>
-                <th>Agent ID</th>
-                <th>Signal Type</th>
-                <th>Confidence</th>
-                <th>Detected</th>
-                <th>Details</th>
-                <th className="text-right">Enforcement</th>
+                <td colSpan={6} className="text-center text-xs text-slate-400 py-6">No fraud signals</td>
               </tr>
-            </thead>
-            <tbody>
-              {signals.map((s, i) => (
-                <tr key={i}>
-                  <td className="data-mono font-bold text-[var(--gw-blue)]">{s.id}</td>
-                  <td className="text-xs font-bold text-[var(--deep-navy)]">{s.type}</td>
-                  <td className="data-mono font-black">{s.score}</td>
-                  <td className="text-[10px] font-bold text-slate-400 uppercase">{s.time}</td>
-                  <td className="text-[10px] text-slate-500 max-w-[200px] truncate">{s.details}</td>
-                  <td className="text-right">
-                    <span className={`status-pill ${s.action === 'BANNED' ? 'status-breach' : s.action === 'HELD' ? 'status-watch' : 'status-blue'}`}>
-                      {s.action}
+            ) : (
+              stats.fraud_watchlist.map((s, i) => (
+                <tr key={`${s.worker_id}-${i}`}>
+                  <td className="data-mono font-bold text-[var(--gw-blue)]">{s.worker_id}</td>
+                  <td className="text-xs font-bold text-[var(--deep-navy)]">{s.name}</td>
+                  <td className="data-mono font-black">
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[var(--red-alert)]"
+                          style={{ width: `${Math.min(100, (s.fraud_score || 0) * 100)}%` }}
+                        />
+                      </div>
+                      {(s.fraud_score || 0).toFixed(2)}
+                    </div>
+                  </td>
+                  <td>
+                    <span className={`status-pill ${s.fraud_level === 'HIGH' ? 'status-breach' : s.fraud_level === 'MODERATE' ? 'status-watch' : 'status-blue'}`}>
+                      {s.fraud_level}
                     </span>
                   </td>
+                  <td className="text-[10px] font-bold text-slate-400 uppercase">{s.trigger_type}</td>
+                  <td className="flex items-center gap-2">
+                    <button onClick={() => doAction(s.worker_id, 'hold')} className="px-2 py-1 text-[10px] font-black uppercase bg-slate-100 rounded">Hold</button>
+                    <button onClick={() => doAction(s.worker_id, 'ban')} className="px-2 py-1 text-[10px] font-black uppercase bg-[var(--red-alert)] text-white rounded">Ban</button>
+                    <button onClick={() => doAction(s.worker_id, 'clear')} className="px-2 py-1 text-[10px] font-black uppercase bg-[var(--gw-blue)] text-white rounded">Clear</button>
+                  </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
-         {/* Security Health */}
-         <div className="flex flex-col gap-6">
-            <div className="metric-card bg-[var(--red-alert)] border-none text-black p-6 relative overflow-hidden">
-               <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
-               <div className="relative z-10">
-                  <ShieldX size={32} className="opacity-40 mb-4" />
-                  <h3 className="text-lg font-black leading-tight">Hard Block Active: 0.6 Threshold</h3>
-                  <p className="text-[10px] font-bold text-slate-100 mt-2 leading-relaxed uppercase tracking-wider">
-                     Any agent exceeding 0.6 fraud score is automatically suspended from disbursements.
-                  </p>
-               </div>
-            </div>
-            <div className="metric-card flex-1">
-               <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Defense Topography</h3>
-               <div className="space-y-3">
-                  {defenseLayers.map(layer => (
-                    <div key={layer.name} className="p-3 bg-slate-50 rounded border border-slate-100">
-                       <div className="flex justify-between items-center mb-2">
-                          <span className="text-[10px] font-bold text-[var(--deep-navy)] uppercase tracking-tight">{layer.name}</span>
-                          <span className="text-[9px] font-black text-[var(--teal-accent)] uppercase">{layer.status}</span>
-                       </div>
-                       <div className="flex justify-between items-center text-[9px] text-slate-400">
-                          <span>Last scan: {layer.lastScan}</span>
-                          <span className={layer.threats > 0 ? 'text-[var(--red-alert)]' : 'text-[var(--teal-accent)]'}>
-                            {layer.threats} threats
-                          </span>
-                       </div>
-                    </div>
-                  ))}
-               </div>
-            </div>
-         </div>
+      <div className="metric-card flex items-center gap-3">
+        <AlertTriangle size={16} className="text-[var(--gw-blue)]" />
+        <span className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Hard Block Threshold: 0.60</span>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Auto-ban on HIGH risk</span>
       </div>
     </div>
   );

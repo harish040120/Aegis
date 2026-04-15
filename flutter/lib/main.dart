@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'providers/aegis_provider.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
+import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/plan_screen.dart';
@@ -48,6 +49,7 @@ class AegisApp extends StatelessWidget {
 
       routes: {
         '/': (context) => const SplashScreen(),
+        '/login': (context) => const LoginScreen(),
         '/onboarding': (context) => const OnboardingScreen(),
         '/profile': (context) => const ProfileScreen(),
         '/plan': (context) => const PlanScreen(),

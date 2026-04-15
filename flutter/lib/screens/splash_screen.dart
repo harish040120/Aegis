@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/aegis_provider.dart';
 import '../theme/app_theme.dart';
+import 'login_screen.dart';
 import 'onboarding_screen.dart';
 import 'plan_screen.dart';
 import 'home_screen.dart';
@@ -30,7 +31,21 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     await Future.delayed(const Duration(milliseconds: 800));
     await prov.init();
     if (!mounted) return;
-    Navigator.pushReplacementNamed(context, prov.routeTarget);
+    
+    if (prov.isLoggedIn) {
+      final step = prov.registrationStep;
+      if (step == 'DONE') {
+        if (prov.hasActivePlan) {
+          Navigator.pushReplacementNamed(context, '/home');
+        } else {
+          Navigator.pushReplacementNamed(context, '/plan');
+        }
+      } else {
+        Navigator.pushReplacementNamed(context, '/onboarding');
+      }
+    } else {
+      Navigator.pushReplacementNamed(context, '/login');
+    }
   }
 
   @override

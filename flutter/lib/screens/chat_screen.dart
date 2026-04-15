@@ -30,11 +30,20 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
 
   bool _isTyping = false;
+  String _workerId = 'W001';
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is Map && args['worker_id'] is String) {
+        setState(() {
+          _workerId = args['worker_id'] as String;
+        });
+      }
+      _scrollToBottom();
+    });
   }
 
   Future<void> _sendMessage() async {
@@ -51,7 +60,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.clear();
     _scrollToBottom();
 
-    final response = await ChatService.generateResponse(text);
+    final response = await ChatService.generateResponse(_workerId, text);
 
     if (!mounted) return;
     setState(() {

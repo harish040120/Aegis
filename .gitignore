@@ -37,3 +37,18 @@ pipeline.log
 
 # Docker
 docker-compose.override.yml
+
+# Project docs and SQL scripts
+aegis_schema.sql
+demo_reset.sql
+BACKEND_WORKFLOW.md
+FRONTEND_WORKFLOW.md
+ID_FORMATS.md
+PROJECT_OVERVIEW.md
+Readme_1.md
+DEMO_GUIDE.md
+
+# Alternate name variants
+frontend.md
+id_formate.md
+readme.md
