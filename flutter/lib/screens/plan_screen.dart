@@ -1,132 +1,236 @@
+// lib/screens/plan_screen.dart
+
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import '../providers/aegis_provider.dart';
-import '../theme/app_theme.dart';
-import '../widgets/common_widgets.dart';
-import 'home_screen.dart';
+
+import '../services/auth_provider.dart';
+import '../utils/constants.dart';
+import '../widgets/shared_widgets.dart';
 
 class PlanScreen extends StatefulWidget {
   const PlanScreen({super.key});
-  @override State<PlanScreen> createState() => _PlanScreenState();
+
+  @override
+  State<PlanScreen> createState() => _PlanScreenState();
 }
 
 class _PlanScreenState extends State<PlanScreen> {
-  String _selectedTier = 'standard';
-  bool _isLoading = false;
+  int _selected = 1; // default: STANDARD
+  bool _loading = false;
+  String? _error;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AegisProvider>().fetchWeatherAndScore();
-    });
-  }
-
-  double _getPremiumForPlan(AegisProvider prov, String tier) {
-    final base = prov.basePremium;
-    switch (tier) {
-      case 'basic':    return (base * 0.8).roundToDouble();
-      case 'standard': return base.roundToDouble();
-      case 'premium':  return (base * 1.2).roundToDouble();
-      default:         return base.roundToDouble();
+  Future<void> _subscribe() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final auth = context.read<AuthProvider>();
+      final plan = kPlans[_selected];
+      await auth.api.subscribe(
+        workerId:      auth.workerId!,
+        planName:      plan.name,
+        weeklyPremium: plan.weeklyPremium,
+        paymentRef:    'demo_payment_${DateTime.now().millisecondsSinceEpoch}',
+      );
+      if (mounted) context.go(AppRoutes.home);
+    } catch (e) {
+      setState(() => _error = 'Subscription failed. Please try again.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AegisProvider>(builder: (_, prov, __) {
-      final worker = prov.worker;
-
-      return Scaffold(
-        backgroundColor: AppColors.bg,
-        body: Stack(children: [
-          Column(children: [
-            _buildHeader(worker?.city ?? 'Chennai'),
-            Expanded(child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const SectionTitle('Choose Protection Plan'),
-                const SizedBox(height: 16),
-                _buildPlanCard('basic', 'Basic Protection', _getPremiumForPlan(prov, 'basic'), '80% disruption coverage'),
-                const SizedBox(height: 12),
-                _buildPlanCard('standard', 'Standard Shield', _getPremiumForPlan(prov, 'standard'), '100% disruption coverage'),
-                const SizedBox(height: 12),
-                _buildPlanCard('premium', 'Premium Plus', _getPremiumForPlan(prov, 'premium'), '120% total coverage'),
-                const SizedBox(height: 30),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _handleSubscribe,
-                    child: _isLoading 
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
-                      : Text('Activate — ₹${_getPremiumForPlan(prov, _selectedTier).toInt()}/week'),
-                  ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Choose a Plan'),
+        automaticallyImplyLeading: false,
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Your protection starts the moment you subscribe.',
+                      style: TextStyle(fontSize: 15, color: AegisColors.textSecondary),
+                    ),
+                    const SizedBox(height: 24),
+                    ...List.generate(kPlans.length, (i) => _PlanCard(
+                      plan: kPlans[i],
+                      selected: _selected == i,
+                      onTap: () => setState(() => _selected = i),
+                    )),
+                    const SizedBox(height: 16),
+                    if (_error != null) ...[
+                      ErrorBanner(
+                        message: _error!,
+                        onDismiss: () => setState(() => _error = null),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AegisColors.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AegisColors.border),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline, size: 16, color: AegisColors.textSecondary),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'KYC (Aadhaar) is optional at this stage. You can complete it later from Settings.',
+                              style: TextStyle(fontSize: 12, color: AegisColors.textSecondary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ]),
-            )),
-          ]),
-          if (_isLoading) const LoadingOverlay(message: 'Activating policy...'),
-        ]),
-      );
-    });
-  }
-
-  Widget _buildHeader(String city) => Container(
-    width: double.infinity, color: Colors.white,
-    padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 12, left: 20, right: 20, bottom: 16),
-    child: Row(children: [
-      Image.asset('assets/main_logo.png', height: 26),
-      const Spacer(),
-      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        const Text('DYNAMIC BASE', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
-        Text(city, style: const TextStyle(fontWeight: FontWeight.bold)),
-      ]),
-    ]),
-  );
-
-  Widget _buildPlanCard(String id, String title, double price, String sub) {
-    final isSel = _selectedTier == id;
-    return InkWell(
-      onTap: () => setState(() => _selectedTier = id),
-      child: AppCard(
-        borderColor: isSel ? AppColors.blue : AppColors.border,
-        color: isSel ? AppColors.blueLight : Colors.white,
-        child: Row(children: [
-          Radio(value: id, groupValue: _selectedTier, onChanged: (v) => setState(() => _selectedTier = v!)),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-            Text(sub, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          ])),
-          Text('₹${price.toInt()}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.navy)),
-        ]),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Selected Plan', style: TextStyle(color: AegisColors.textSecondary)),
+                      Text(
+                        kPlans[_selected].name,
+                        style: const TextStyle(fontWeight: FontWeight.w700, color: AegisColors.primary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Weekly Premium', style: TextStyle(color: AegisColors.textSecondary)),
+                      Text(
+                        '₹${kPlans[_selected].weeklyPremium.toStringAsFixed(0)}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  AegisButton(
+                    label: 'Activate Coverage →',
+                    loading: _loading,
+                    onPressed: _subscribe,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
 
-  Future<void> _handleSubscribe() async {
-    setState(() => _isLoading = true);
-    final prov = context.read<AegisProvider>();
-    final premium = _getPremiumForPlan(prov, _selectedTier);
-    
-    try {
-      final success = await prov.subscribe(planTier: _selectedTier, premium: premium);
-      if (success && mounted) {
-        // Navigation: Ensure we move to the main dashboard
-        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Subscription failed. Please check your connection.')),
-        );
-      }
-    } catch (e) {
-      debugPrint("Subscribe Exception: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+class _PlanCard extends StatelessWidget {
+  final PlanInfo plan;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PlanCard({required this.plan, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: selected ? AegisColors.primary.withOpacity(0.08) : AegisColors.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? AegisColors.primary : AegisColors.border,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        plan.name,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: selected ? AegisColors.primary : AegisColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        plan.tagline,
+                        style: const TextStyle(fontSize: 12, color: AegisColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '₹${plan.weeklyPremium.toStringAsFixed(0)}',
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                    ),
+                    const Text(
+                      '/week',
+                      style: TextStyle(fontSize: 11, color: AegisColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AegisColors.primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                'Up to ₹${plan.payoutCap.toStringAsFixed(0)} / week payout',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AegisColors.primary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...plan.features.map((f) => Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle_outline, size: 14, color: AegisColors.primary),
+                  const SizedBox(width: 8),
+                  Text(f, style: const TextStyle(fontSize: 13, color: AegisColors.textSecondary)),
+                ],
+              ),
+            )),
+          ],
+        ),
+      ),
+    );
   }
 }
