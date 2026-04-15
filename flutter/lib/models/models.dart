@@ -1,219 +1,270 @@
-// ─────────────────────────────────────────────
-// WORKER / AUTH
-// ─────────────────────────────────────────────
-class Worker {
-  final String id;
-  final String name;
-  final String phone;
-  final String platform;
-  final String city;
-  final String zone;
-  final bool kycComplete;
-  final bool subscribed;
-  final String upiId;
-  final double weeklyEarningsAvg;
-  final int riskScore;
-  final double weeklyPremium;
-  final String planTier;
-  final String? token;
+// lib/models/models.dart
 
-  Worker({
-    required this.id,
-    required this.name,
-    required this.phone,
-    required this.platform,
-    required this.city,
-    required this.zone,
-    required this.kycComplete,
-    required this.subscribed,
-    required this.upiId,
-    required this.weeklyEarningsAvg,
-    required this.riskScore,
-    required this.weeklyPremium,
-    required this.planTier,
-    this.token,
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+class LoginResponse {
+  final String sessionToken;
+  final String workerId;
+  final bool isNewRegistration;
+  final String? resumedStep;
+  final String expiresAt;
+
+  LoginResponse({
+    required this.sessionToken,
+    required this.workerId,
+    required this.isNewRegistration,
+    this.resumedStep,
+    required this.expiresAt,
   });
 
-  factory Worker.fromJson(Map<String, dynamic> j) => Worker(
-    id: j['worker_id'] ?? j['id'] ?? '',
-    name: j['name'] ?? '',
-    phone: j['phone'] ?? '',
-    platform: j['platform'] ?? '',
-    city: j['city'] ?? '',
-    zone: j['zone'] ?? '',
-    kycComplete: (j['kyc_status'] == 'VERIFIED') || (j['kycComplete'] == true),
-    subscribed: (j['has_active_policy'] == true) || (j['subscribed'] == true),
-    upiId: j['upi_id'] ?? '',
-    weeklyEarningsAvg: (j['avg_earnings_12w'] ?? 0).toDouble(),
-    riskScore: j['riskScore'] ?? 0,
-    weeklyPremium: (j['weeklyPremium'] ?? 0).toDouble(),
-    planTier: j['planTier'] ?? 'standard',
-    token: j['token'],
+  factory LoginResponse.fromJson(Map<String, dynamic> j) => LoginResponse(
+    sessionToken:      j['session_token'],
+    workerId:          j['worker_id'],
+    isNewRegistration: j['is_new_registration'] ?? true,
+    resumedStep:       j['resumed_step'],
+    expiresAt:         j['expires_at'] ?? '',
   );
 }
 
-// ─────────────────────────────────────────────
-// WEATHER
-// ─────────────────────────────────────────────
-class WeatherData {
-  final double tempC;
-  final double rainfallMm3h;
-  final double windKmh;
-  final int aqi;
-  final String description;
-  final String city;
-  final DateTime fetchedAt;
+// ─── Home ─────────────────────────────────────────────────────────────────────
+class HomeData {
+  final String workerId;
+  final String name;
+  final String zone;
+  final String platform;
+  final String planName;
+  final double payoutCap;
+  final String coverageEnd;
+  final double riskScore;
+  final String riskLevel;
+  final double incomeDropPct;
+  final String incomeSeverity;
+  final String lastTriggerType;
+  final double hoursOnline;
+  final double earningsToday;
+  final bool payoutTriggered;
+  final String analysisPayoutStatus;
+  final String lastAnalysisAt;
+  final int unreadNotifications;
 
-  WeatherData({
-    required this.tempC,
-    required this.rainfallMm3h,
-    required this.windKmh,
-    required this.aqi,
-    required this.description,
-    required this.city,
-    required this.fetchedAt,
+  HomeData({
+    required this.workerId,
+    required this.name,
+    required this.zone,
+    required this.platform,
+    required this.planName,
+    required this.payoutCap,
+    required this.coverageEnd,
+    required this.riskScore,
+    required this.riskLevel,
+    required this.incomeDropPct,
+    required this.incomeSeverity,
+    required this.lastTriggerType,
+    required this.hoursOnline,
+    required this.earningsToday,
+    required this.payoutTriggered,
+    required this.analysisPayoutStatus,
+    required this.lastAnalysisAt,
+    required this.unreadNotifications,
   });
+
+  factory HomeData.fromJson(Map<String, dynamic> j) => HomeData(
+    workerId:             j['worker_id'] ?? '',
+    name:                 j['name'] ?? '',
+    zone:                 j['zone'] ?? '',
+    platform:             j['platform'] ?? '',
+    planName:             j['plan_name'] ?? '',
+    payoutCap:            (j['payout_cap'] ?? 0).toDouble(),
+    coverageEnd:          j['coverage_end'] ?? '',
+    riskScore:            (j['risk_score'] ?? 0).toDouble(),
+    riskLevel:            j['risk_level'] ?? 'LOW',
+    incomeDropPct:        (j['income_drop_pct'] ?? 0).toDouble(),
+    incomeSeverity:       j['income_severity'] ?? '',
+    lastTriggerType:      j['last_trigger_type'] ?? '',
+    hoursOnline:          (j['hours_online'] ?? 0).toDouble(),
+    earningsToday:        (j['earnings_today'] ?? 0).toDouble(),
+    payoutTriggered:      j['payout_triggered'] ?? false,
+    analysisPayoutStatus: j['analysis_payout_status'] ?? '',
+    lastAnalysisAt:       j['last_analysis_at'] ?? '',
+    unreadNotifications:  j['unread_notifications'] ?? 0,
+  );
 }
 
-// ─────────────────────────────────────────────
-// DISRUPTION ALERT
-// ─────────────────────────────────────────────
-enum TriggerType { heavyRainfall, severeFLooding, extremeHeat, cyclone, hazardousAqi, curfew, transportStrike, zoneSuspension }
+// ─── Analysis ─────────────────────────────────────────────────────────────────
+class AnalysisResult {
+  final String status;
+  final String workerId;
+  final double riskScore;
+  final String riskLevel;
+  final double incomeDrop;
+  final String incomeSeverity;
+  final double? payoutAmount;
+  final String? triggerType;
+  final int? payoutId;
+  final double? newWeeklyPremium;
 
-class DisruptionAlert {
-  final String id;
+  AnalysisResult({
+    required this.status,
+    required this.workerId,
+    required this.riskScore,
+    required this.riskLevel,
+    required this.incomeDrop,
+    required this.incomeSeverity,
+    this.payoutAmount,
+    this.triggerType,
+    this.payoutId,
+    this.newWeeklyPremium,
+  });
+
+  factory AnalysisResult.fromJson(Map<String, dynamic> j) {
+    final analytics = j['analytics'] ?? {};
+    final risk = analytics['risk'] ?? {};
+    final income = analytics['income'] ?? {};
+    final payout = j['payout'];
+    final premiumUpdate = j['premium_update'];
+
+    return AnalysisResult(
+      status:          j['status'] ?? '',
+      workerId:        j['worker_id'] ?? '',
+      riskScore:       (risk['score'] ?? 0).toDouble(),
+      riskLevel:       risk['level'] ?? 'LOW',
+      incomeDrop:      (income['drop'] ?? 0).toDouble(),
+      incomeSeverity:  income['severity'] ?? '',
+      payoutAmount:    payout != null ? (payout['amount'] ?? 0).toDouble() : null,
+      triggerType:     payout?['trigger'],
+      payoutId:        payout?['payout_id'],
+      newWeeklyPremium: premiumUpdate != null
+          ? (premiumUpdate['weekly_premium'] ?? 0).toDouble()
+          : null,
+    );
+  }
+}
+
+// ─── Notification ─────────────────────────────────────────────────────────────
+class AegisNotification {
+  final int notifId;
+  final String notificationType;
+  final String title;
+  final String body;
+  final double? amount;
+  final String? upiId;
+  final String deliveryStatus;
+  final String createdAt;
+
+  AegisNotification({
+    required this.notifId,
+    required this.notificationType,
+    required this.title,
+    required this.body,
+    this.amount,
+    this.upiId,
+    required this.deliveryStatus,
+    required this.createdAt,
+  });
+
+  factory AegisNotification.fromJson(Map<String, dynamic> j) => AegisNotification(
+    notifId:          j['notif_id'],
+    notificationType: j['notification_type'] ?? '',
+    title:            j['title'] ?? '',
+    body:             j['body'] ?? '',
+    amount:           j['amount'] != null ? (j['amount']).toDouble() : null,
+    upiId:            j['upi_id'],
+    deliveryStatus:   j['delivery_status'] ?? '',
+    createdAt:        j['created_at'] ?? '',
+  );
+}
+
+// ─── Alert ────────────────────────────────────────────────────────────────────
+class WeatherAlert {
   final String type;
   final String typeLabel;
   final String severity;
   final double metric;
   final double threshold;
-  final String zone;
-  final String description;
-  final DateTime detectedAt;
+  final double triggerPct;
+  final bool active;
 
-  DisruptionAlert({
-    required this.id,
+  WeatherAlert({
     required this.type,
     required this.typeLabel,
     required this.severity,
     required this.metric,
     required this.threshold,
-    required this.zone,
-    required this.description,
-    DateTime? detectedAt,
-  }) : detectedAt = detectedAt ?? DateTime.now();
-
-  factory DisruptionAlert.fromJson(Map<String, dynamic> j) {
-    return DisruptionAlert(
-      id: j['id']?.toString() ?? '',
-      type: j['type'] ?? '',
-      typeLabel: j['typeLabel'] ?? '',
-      severity: j['severity'] ?? 'medium',
-      metric: (j['metric'] ?? 0).toDouble(),
-      threshold: (j['threshold'] ?? 0).toDouble(),
-      zone: j['zone'] ?? 'Unknown Zone',
-      description: j['description'] ?? 'Active AI disruption detected.',
-      detectedAt: j['detectedAt'] != null 
-          ? DateTime.parse(j['detectedAt']) 
-          : DateTime.now(),
-    );
-  }
-  
-  // Check if alert has been active for at least 5 minutes
-  bool get isActiveFor5Minutes {
-    final duration = DateTime.now().difference(detectedAt);
-    return duration.inMinutes >= 5;
-  }
-}
-
-// ─────────────────────────────────────────────
-// CLAIM
-// ─────────────────────────────────────────────
-enum ClaimStatus { pending, fraudCheck, approved, held, blocked, paid }
-
-class Claim {
-  final String id;
-  final String workerId;
-  final String alertId;
-  final ClaimStatus status;
-  final double amount;
-  final double fraudScore;
-  final DateTime createdAt;
-  final DateTime? resolvedAt;
-  final String triggerType;
-  final String zone;
-  final String? reviewNote;
-
-  Claim({
-    required this.id,
-    required this.workerId,
-    required this.alertId,
-    required this.status,
-    required this.amount,
-    required this.fraudScore,
-    required this.createdAt,
-    this.resolvedAt,
-    required this.triggerType,
-    required this.zone,
-    this.reviewNote,
+    required this.triggerPct,
+    required this.active,
   });
 
-  factory Claim.fromJson(Map<String, dynamic> j) => Claim(
-    id: (j['id'] ?? j['payout_id'] ?? 0).toString(),
-    workerId: j['worker_id']?.toString() ?? '',
-    alertId: '',
-    status: _mapPayoutStatus(j['payout_status']?.toString() ?? ''),
-    amount: (j['amount'] ?? 0).toDouble(),
-    fraudScore: (j['fraud_score'] ?? 0).toDouble(),
-    createdAt: DateTime.tryParse(j['triggered_at']?.toString() ?? '') ?? DateTime.now(),
-    resolvedAt: null,
-    triggerType: j['trigger_type']?.toString() ?? 'Base Coverage',
-    zone: j['zone']?.toString() ?? '',
-    reviewNote: null,
+  factory WeatherAlert.fromJson(Map<String, dynamic> j) => WeatherAlert(
+    type:       j['type'] ?? '',
+    typeLabel:  j['typeLabel'] ?? '',
+    severity:   j['severity'] ?? '',
+    metric:     (j['metric'] ?? 0).toDouble(),
+    threshold:  (j['threshold'] ?? 0).toDouble(),
+    triggerPct: (j['trigger_pct'] ?? 0).toDouble(),
+    active:     j['active'] ?? false,
   );
-
-  static ClaimStatus _mapPayoutStatus(String status) {
-    switch (status.toUpperCase()) {
-      case 'APPROVED': return ClaimStatus.approved;
-      case 'PAID': return ClaimStatus.paid;
-      case 'HELD': return ClaimStatus.held;
-      case 'BANNED': return ClaimStatus.blocked;
-      case 'DENIED': return ClaimStatus.blocked;
-      default: return ClaimStatus.pending;
-    }
-  }
-
-  String get statusLabel {
-    switch (status) {
-      case ClaimStatus.pending: return 'Processing';
-      case ClaimStatus.fraudCheck: return 'Under Review';
-      case ClaimStatus.approved: return 'Approved';
-      case ClaimStatus.held: return 'On Hold';
-      case ClaimStatus.blocked: return 'Blocked';
-      case ClaimStatus.paid: return 'Paid';
-    }
-  }
 }
 
-// ─────────────────────────────────────────────
-// RISK RESULT (THE COMPILATION FIX)
-// ─────────────────────────────────────────────
-class RiskResult {
-  final int score;
-  final String band;
-  final double multiplier;
-  final double weeklyPremium; // 🚀 RESTORED
-  final double dailyCoverage;
-  final double maxWeekly;
-  final Map<String, dynamic> breakdown;
+// ─── Payout History ───────────────────────────────────────────────────────────
+class PayoutRecord {
+  final int payoutId;
+  final double amount;
+  final String triggerType;
+  final double triggerPct;
+  final String riskLevel;
+  final String incomeSeverity;
+  final String payoutStatus;
+  final String triggeredAt;
 
-  RiskResult({
-    required this.score,
-    required this.band,
-    required this.multiplier,
-    required this.weeklyPremium, // 🚀 RESTORED
-    required this.dailyCoverage,
-    required this.maxWeekly,
-    required this.breakdown,
+  PayoutRecord({
+    required this.payoutId,
+    required this.amount,
+    required this.triggerType,
+    required this.triggerPct,
+    required this.riskLevel,
+    required this.incomeSeverity,
+    required this.payoutStatus,
+    required this.triggeredAt,
   });
+
+  factory PayoutRecord.fromJson(Map<String, dynamic> j) => PayoutRecord(
+    payoutId:      j['payout_id'],
+    amount:        (j['amount'] ?? 0).toDouble(),
+    triggerType:   j['trigger_type'] ?? '',
+    triggerPct:    (j['trigger_pct'] ?? 0).toDouble(),
+    riskLevel:     j['risk_level'] ?? '',
+    incomeSeverity:j['income_severity'] ?? '',
+    payoutStatus:  j['payout_status'] ?? '',
+    triggeredAt:   j['triggered_at'] ?? '',
+  );
+}
+
+// ─── Coverage ─────────────────────────────────────────────────────────────────
+class CoverageData {
+  final String planName;
+  final double weeklyPremium;
+  final double payoutCap;
+  final String coverageStart;
+  final String coverageEnd;
+  final String kycStatus;
+  final int policyId;
+
+  CoverageData({
+    required this.planName,
+    required this.weeklyPremium,
+    required this.payoutCap,
+    required this.coverageStart,
+    required this.coverageEnd,
+    required this.kycStatus,
+    required this.policyId,
+  });
+
+  factory CoverageData.fromJson(Map<String, dynamic> j) => CoverageData(
+    planName:       j['plan_name'] ?? '',
+    weeklyPremium:  (j['weekly_premium'] ?? 0).toDouble(),
+    payoutCap:      (j['payout_cap'] ?? 0).toDouble(),
+    coverageStart:  j['coverage_start'] ?? '',
+    coverageEnd:    j['coverage_end'] ?? '',
+    kycStatus:      j['kyc_status'] ?? 'PENDING',
+    policyId:       j['policy_id'] ?? 0,
+  );
 }
