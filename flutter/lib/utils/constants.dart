@@ -19,6 +19,7 @@ class AppRoutes {
   static const String register = '/register';
   static const String plan = '/plan';
   static const String home = '/home';
+  static const String payoutSuccess = '/payout-success';
 }
 
 // ─── Registration Steps ──────────────────────────────────────────────────────

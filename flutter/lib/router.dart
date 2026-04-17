@@ -14,6 +14,7 @@ import 'screens/otp_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/plan_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/payment_success_screen.dart';
 
 GoRouter buildRouter(AuthProvider auth) {
   return GoRouter(
@@ -69,6 +70,15 @@ GoRouter buildRouter(AuthProvider auth) {
       GoRoute(
         path: AppRoutes.home,
         builder: (_, __) => const HomeScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.payoutSuccess,
+        builder: (_, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          final amount = (extra?['amount'] ?? 0).toDouble();
+          final trigger = extra?['trigger'] ?? '';
+          return PaymentSuccessScreen(amount: amount, trigger: trigger);
+        },
       ),
     ],
   );

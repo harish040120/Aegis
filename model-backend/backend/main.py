@@ -21,7 +21,7 @@ import google.generativeai as genai
 import json
 from datetime import datetime, timedelta
 from typing import Optional, List
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import requests as req_lib
 import datetime as dt
@@ -60,6 +60,7 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 DATA_HUB_URL = os.getenv("DATA_HUB_URL", "http://localhost:3015/api/risk-data")
 DATABASE_URL = os.getenv("DATABASE_URL")
 DB_POOL_MAX = int(os.getenv("DB_POOL_MAX", "3"))
+DEMO_OTP = "244536"
 print("DATABASE_URL =", DATABASE_URL)
 GOOGLE_KEY = os.environ.get("GOOGLE_API_KEY", "")
 HUB_URL = os.getenv("DATA_HUB_URL", "http://localhost:3015").replace("/api/risk-data", "")
@@ -346,13 +347,7 @@ def _predict_base_fraud_score(ff: dict) -> float:
 async def fetch_db_activity(worker_id: str) -> dict:
     conn = await get_db_conn()
     try:
-        worker = await conn.fetchrow("SELECT worker_id FROM workers WHERE worker_id=$1", req.worker_id)
-        if not worker:
-            raise HTTPException(status_code=404, detail="Worker not found")
-        worker = await conn.fetchrow("SELECT worker_id FROM workers WHERE worker_id=$1", req.worker_id)
-        if not worker:
-            raise HTTPException(status_code=404, detail="Worker not found")
-        worker = await conn.fetchrow("SELECT worker_id FROM workers WHERE worker_id=$1", req.worker_id)
+        worker = await conn.fetchrow("SELECT worker_id FROM workers WHERE worker_id=$1", worker_id)
         if not worker:
             raise HTTPException(status_code=404, detail="Worker not found")
         row = await conn.fetchrow("SELECT COALESCE(SUM(earnings), 0) as earnings, COUNT(*) as orders FROM orders WHERE worker_id = $1 AND timestamp::date = CURRENT_DATE", worker_id)
@@ -425,9 +420,9 @@ async def check_order_history(worker_id: str) -> bool:
 
 # --- Auto-trigger Scheduler ---
 
-scheduler = BackgroundScheduler()
+scheduler = AsyncIOScheduler()
 
-def auto_trigger_loop():
+async def auto_trigger_loop():
     """
     Runs every 60s. For each worker with an active policy today,
     fetches env data from hub, runs ML pipeline, writes payout if
@@ -435,64 +430,57 @@ def auto_trigger_loop():
     Also updates worker_latest_analysis with live metrics.
     """
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        db = await get_db_conn()
+        try:
+            rows = await db.fetch("SELECT worker_id, avg_earnings_12w, target_daily_hours, zone, avg_orders_7d, lat_last, lon_last FROM v_auto_trigger_candidates")
 
-        async def _run():
-            db = await get_db_conn()
+            scenario_res = req_lib.get(f"{HUB_URL}/api/risk-data?worker_id=W001", timeout=3)
+            active_scenario = "normal"
+            if scenario_res.ok:
+                active_scenario = scenario_res.json().get("scenario", "normal")
+        finally:
+            await db.close()
+
+        today = dt.date.today().isoformat()
+        for worker in rows:
+            worker_id = worker["worker_id"]
+
+            check = req_lib.get(
+                f"{HUB_URL}/api/payout-exists/{worker_id}/{today}",
+                timeout=3
+            )
+            if check.ok and check.json().get("exists"):
+                continue
+
+            lat = worker.get("lat_last") or 13.0827
+            lon = worker.get("lon_last") or 80.2707
             try:
-                rows = await db.fetch("SELECT worker_id, avg_earnings_12w, target_daily_hours, zone, avg_orders_7d FROM v_auto_trigger_candidates")
-                
-                scenario_res = req_lib.get(f"{HUB_URL}/api/risk-data?worker_id=W001", timeout=3)
-                active_scenario = "normal"
-                if scenario_res.ok:
-                    active_scenario = scenario_res.json().get("scenario", "normal")
-            finally:
-                await db.close()
+                result = await run_analysis_internal(worker_id, float(lat), float(lon))
 
-            today = dt.date.today().isoformat()
-            for worker in rows:
-                worker_id = worker["worker_id"]
-                
-                check = req_lib.get(
-                    f"{HUB_URL}/api/payout-exists/{worker_id}/{today}",
-                    timeout=3
-                )
-                if check.ok and check.json().get("exists"):
-                    continue
+                analytics = result.get("analytics", {})
+                risk = analytics.get("risk", {})
+                income = analytics.get("income", {})
+                fraud = analytics.get("fraud", {})
 
-                lat = worker.get("lat_last") or 13.0827
-                lon = worker.get("lon_last") or 80.2707
+                db = await get_db_conn()
                 try:
-                    result = await run_analysis_internal(worker_id, float(lat), float(lon))
-                    
-                    analytics = result.get("analytics", {})
-                    risk = analytics.get("risk", {})
-                    income = analytics.get("income", {})
-                    fraud = analytics.get("fraud", {})
-                    
-                    db = await get_db_conn()
-                    try:
-                        await db.execute("""
-                            INSERT INTO worker_latest_analysis (worker_id, live_risk_score, live_income_drop_pct, live_fraud_score, active_scenario, last_calculated_at)
-                            VALUES ($1, $2, $3, $4, $5, NOW())
-                            ON CONFLICT (worker_id) DO UPDATE SET
-                                live_risk_score = EXCLUDED.live_risk_score,
-                                live_income_drop_pct = EXCLUDED.live_income_drop_pct,
-                                live_fraud_score = EXCLUDED.live_fraud_score,
-                                active_scenario = EXCLUDED.active_scenario,
-                                last_calculated_at = EXCLUDED.last_calculated_at
-                        """, worker_id, risk.get("score", 0), income.get("drop", 0), fraud.get("score", 0), active_scenario)
-                    finally:
-                        await db.close()
-                    
-                    if result.get("status") == "APPROVED":
-                        print(f"[AUTO] Payout approved for {worker_id}: ₹{result['payout']['amount']}")
-                except Exception as exc:
-                    print(f"[AUTO] Analysis failed for {worker_id}: {exc}")
+                    await db.execute("""
+                        INSERT INTO worker_latest_analysis (worker_id, live_risk_score, live_income_drop_pct, live_fraud_score, active_scenario, last_calculated_at)
+                        VALUES ($1, $2, $3, $4, $5, NOW())
+                        ON CONFLICT (worker_id) DO UPDATE SET
+                            live_risk_score = EXCLUDED.live_risk_score,
+                            live_income_drop_pct = EXCLUDED.live_income_drop_pct,
+                            live_fraud_score = EXCLUDED.live_fraud_score,
+                            active_scenario = EXCLUDED.active_scenario,
+                            last_calculated_at = EXCLUDED.last_calculated_at
+                    """, worker_id, risk.get("score", 0), income.get("drop", 0), fraud.get("score", 0), active_scenario)
+                finally:
+                    await db.close()
 
-        loop.run_until_complete(_run())
-        loop.close()
+                if result.get("status") == "APPROVED":
+                    print(f"[AUTO] Payout approved for {worker_id}: ₹{result['payout']['amount']}")
+            except Exception as exc:
+                print(f"[AUTO] Analysis failed for {worker_id}: {exc}")
     except Exception as exc:
         print(f"[AUTO-TRIGGER ERROR] {exc}")
 
@@ -646,9 +634,14 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
 
     min_payout_pct = 0.05
     tp, tn, st = 0.0, "None", "DENIED"
+    scenario_gate_thresholds = {
+        "rain_mm": 45,
+        "aqi": 120,
+    }
+    business_drop_threshold = 30
 
     # Parametric: no scenario -> no payout
-    if scenario_triggered == "normal":
+    if scenario_triggered in ("normal", "location_update"):
         return {
             "status": "MONITORING",
             "worker_id": worker_id,
@@ -662,18 +655,56 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
             "message": "No active scenario triggers. Monitoring mode."
         }
 
+    scenario_trigger_names = {
+        "heavy_rain": "Heavy Rainfall",
+        "severe_flood": "Severe Flood",
+        "hazardous_aqi": "Hazardous AQI",
+        "light_rain": "Light Rain",
+    }
+
+    scenario_gate = False
+    scenario_reason = None
+    if scenario_triggered in scenario_trigger_names:
+        scenario_gate = True
+        scenario_reason = scenario_trigger_names[scenario_triggered]
+        if scenario_triggered == "severe_flood":
+            tp = 1.0
+    if w["rain_1h"] > scenario_gate_thresholds["rain_mm"]:
+        scenario_gate = True
+        scenario_reason = "Heavy Rainfall"
+    if aq["pm25"] > scenario_gate_thresholds["aqi"]:
+        scenario_gate = True
+        scenario_reason = "Hazardous AQI"
+
+    business_gate = any([
+        met["earnings_drop_pct"] >= business_drop_threshold,
+        met["order_drop_pct"] >= business_drop_threshold,
+        met["activity_drop_pct"] >= business_drop_threshold,
+    ])
+
+    if not (scenario_gate and business_gate):
+        return {
+            "status": "MONITORING",
+            "worker_id": worker_id,
+            "scenario": scenario_triggered,
+            "analytics": {
+                "risk": {"score": rs, "level": rl},
+                "fraud": {"score": fs, "level": fl},
+                "income": {"drop": idr, "severity": isev}
+            },
+            "payout": {"amount": 0, "trigger": "None"},
+            "message": "Dual gate not satisfied. Monitoring mode.",
+            "gates": {"scenario": scenario_gate, "business": business_gate}
+        }
+
     if fl in ("HIGH", "CRITICAL") or fs > 0.65:
         st = "BANNED"
     elif fs > 0.3:
         st = "HELD"
     else:
         cands = []
-        if scenario_triggered:
-            cands.append((0.80, scenario_triggered))
-        if w["rain_1h"] > 45:
-            cands.append((0.80, "Heavy Rainfall"))
-        if aq["pm25"] > 120:
-            cands.append((0.80, "Hazardous AQI"))
+        if scenario_reason:
+            cands.append((tp if tp > 0 else 0.80, scenario_reason))
         if idr > 45:
             cands.append((1.00, "Severe Income Loss (ML)"))
 
@@ -683,7 +714,8 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
         else:
             st = "DENIED"
 
-    p_amt = round((rate * lost) * tp)
+    base_payout = (rate * max(1.0, lost)) * max(tp, min_payout_pct)
+    p_amt = round(base_payout)
     if st == "APPROVED" and p_amt < 50:
         p_amt = 50
 
@@ -739,11 +771,11 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
 
         if st == "APPROVED" and tn != "None":
             alert_severity = "critical" if tp >= 0.8 else "high" if tp >= 0.5 else "medium"
-        await conn.execute(
-            """INSERT INTO alerts (worker_id, type, severity, metric_value, threshold_value, claimed, expires_at, status)
-               VALUES ($1, $2, $3, $4, $5, TRUE, NOW() + INTERVAL '3 minutes', 'ACTIVE')""",
-            worker_id, tn, alert_severity, float(p_amt), tp
-        )
+            await conn.execute(
+                """INSERT INTO alerts (worker_id, type, severity, metric_value, threshold_value, claimed, expires_at, status)
+                   VALUES ($1, $2, $3, $4, $5, TRUE, NOW() + INTERVAL '3 minutes', 'ACTIVE')""",
+                worker_id, tn, alert_severity, float(p_amt), tp
+            )
 
         await conn.execute(
             """INSERT INTO audit_log (event_type, entity_type, entity_id, worker_id, action_by, severity, message, details)
@@ -1022,7 +1054,7 @@ async def login(req: LoginRequest):
 
         print("✅ LOGIN SUCCESS — generating OTP")
 
-        otp_code = str(int(datetime.now().timestamp()) % 1000000).zfill(6)
+        otp_code = DEMO_OTP
 
         import uuid
         session_token = str(uuid.uuid4())
@@ -1075,17 +1107,18 @@ async def verify_otp(req: VerifyOtpRequest):
         if not session or not session["is_valid"]:
             raise HTTPException(status_code=404, detail="Invalid session")
 
+        if req.otp_code != DEMO_OTP:
+            raise HTTPException(status_code=401, detail="Invalid OTP")
+
         otp_row = await conn.fetchrow(
-            """SELECT id, otp FROM otps 
+            """SELECT id FROM otps 
                WHERE phone = (SELECT phone FROM workers WHERE worker_id=$1)
-               AND used = false AND expires_at > NOW()
+               AND used = false
                ORDER BY created_at DESC LIMIT 1""",
             req.worker_id
         )
-        if not otp_row or otp_row["otp"] != req.otp_code:
-            raise HTTPException(status_code=401, detail="Invalid OTP")
-
-        await conn.execute("UPDATE otps SET used = true WHERE id = $1", otp_row["id"])
+        if otp_row:
+            await conn.execute("UPDATE otps SET used = true WHERE id = $1", otp_row["id"])
         await conn.execute(
             "UPDATE auth_sessions SET is_valid = true, last_used_at = NOW() WHERE session_token = $1",
             req.session_token
@@ -1632,6 +1665,7 @@ async def get_admin_stats():
             """SELECT p.payout_id, p.worker_id, w.name, p.trigger_type,
                       p.amount, p.payout_status, p.triggered_at, p.fraud_score, p.auto_triggered
                FROM payouts p JOIN workers w ON w.worker_id=p.worker_id
+               WHERE p.amount > 0
                ORDER BY p.triggered_at DESC LIMIT 50"""
         )
 
@@ -1735,7 +1769,7 @@ async def get_worker_summary_mobile(worker_id: str):
     conn = await get_db_conn()
     try:
         worker = await conn.fetchrow("SELECT * FROM workers WHERE worker_id=$1", worker_id)
-        payouts = await conn.fetch("SELECT amount, payout_status, triggered_at, trigger_pct FROM payouts WHERE worker_id=$1 ORDER BY triggered_at DESC LIMIT 5", worker_id)
+        payouts = await conn.fetch("SELECT amount, payout_status, triggered_at, trigger_pct FROM payouts WHERE worker_id=$1 AND amount > 0 ORDER BY triggered_at DESC LIMIT 5", worker_id)
         total_paid = await conn.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payouts WHERE worker_id=$1 AND payout_status='APPROVED' AND triggered_at > NOW() - INTERVAL '30 days'", worker_id)
         return {"worker": dict(worker), "total_paid_this_month": float(total_paid), "recent_payouts": [dict(p) for p in payouts]}
     finally:
@@ -1749,7 +1783,7 @@ async def get_worker_payouts(worker_id: str):
             """SELECT payout_id, amount, trigger_type, trigger_pct, hourly_rate, hours_lost,
                       risk_level, income_severity, fraud_level, fraud_score, payout_status,
                       triggered_at, auto_triggered
-               FROM payouts WHERE worker_id=$1 ORDER BY triggered_at DESC""",
+               FROM payouts WHERE worker_id=$1 AND amount > 0 ORDER BY triggered_at DESC""",
             worker_id
         )
         return [dict(p) for p in payouts]

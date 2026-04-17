@@ -20,6 +20,7 @@ class OtpScreen extends StatefulWidget {
 
 class _OtpScreenState extends State<OtpScreen> {
   final _pinCtrl = TextEditingController();
+  static const String _demoOtp = '244536';
   bool _loading = false;
   String? _error;
   int _resendSeconds = 30;
@@ -28,6 +29,7 @@ class _OtpScreenState extends State<OtpScreen> {
   @override
   void initState() {
     super.initState();
+    _pinCtrl.text = _demoOtp;
     _startResendTimer();
   }
 
@@ -140,6 +142,27 @@ class _OtpScreenState extends State<OtpScreen> {
                 hapticFeedbackType: HapticFeedbackType.lightImpact,
                 onCompleted: _loading ? null : _verify,
                 enabled: !_loading,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Text(
+                    'Demo OTP: ',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AegisColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    _demoOtp,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AegisColors.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 24),
               if (_error != null) ...[

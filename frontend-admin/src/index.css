@@ -4,6 +4,7 @@
 
 @theme {
   --color-gw-blue: #0066CC;
+  --color-sky-blue: #46B4FF;
   --color-deep-navy: #002B54;
   --color-teal-accent: #00A4A4;
   --color-orange-warning: #FF6B35;
@@ -16,6 +17,17 @@
 }
 
 @layer base {
+  :root {
+    --gw-blue: #46B4FF;
+    --deep-navy: #002B54;
+    --teal-accent: #00A4A4;
+    --red-alert: #DC3545;
+    --light-gray: #F8F9FA;
+    --border-gray: #E9ECEF;
+    --text-muted: #6B7280;
+    --text-primary: #1F2933;
+  }
+
   body {
     @apply bg-[var(--color-light-gray)] text-[#333333] antialiased m-0 p-0 overflow-hidden;
     font-family: theme('fontFamily.sans');

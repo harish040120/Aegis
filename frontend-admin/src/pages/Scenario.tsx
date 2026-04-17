@@ -40,11 +40,9 @@ type ParamMeta = Record<string, { min: number; max: number }>;
 
 const scenarioPresets = [
   { key: 'normal', label: 'Normal', tag: 'Baseline', rain: 0, aqi: 45, earnings: 1800, hours: 7.5 },
-  { key: 'light_rain', label: 'Light Rain', tag: 'Mild', rain: 15, aqi: 30, earnings: 1540, hours: 5.5 },
   { key: 'heavy_rain', label: 'Heavy Rain', tag: 'Scenario Gate', rain: 52, aqi: 20, earnings: 1065, hours: 4.0 },
   { key: 'severe_flood', label: 'Severe Flood', tag: 'Dual Gate', rain: 80, aqi: 15, earnings: 750, hours: 1.5 },
   { key: 'hazardous_aqi', label: 'Hazardous AQI', tag: 'Scenario Gate', rain: 0, aqi: 185, earnings: 830, hours: 3.5 },
-  { key: 'gps_fraud', label: 'GPS Fraud', tag: 'Fraud', rain: 0, aqi: 45, earnings: 750, hours: 8.0 },
   { key: 'location_update', label: 'Location Update', tag: 'Location', rain: 0, aqi: 45, earnings: 220, hours: 0.5 }
 ];
 
@@ -302,15 +300,15 @@ export const Scenario: React.FC = () => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {scenarioPresets.map((s) => (
-                <button
-                  key={s.key}
-                  onClick={() => applyScenario(s.key)}
-                  className={`text-left px-4 py-3 border rounded transition-all ${
-                    selectedScenario === s.key
-                      ? 'border-[var(--gw-blue)] bg-blue-50/40'
-                      : 'border-[var(--border-gray)] bg-white hover:bg-slate-50'
-                  }`}
-                >
+                  <button
+                    key={s.key}
+                    onClick={() => setSelectedScenario(s.key)}
+                    className={`text-left px-4 py-3 border rounded transition-all ${
+                      selectedScenario === s.key
+                        ? 'border-[var(--gw-blue)] bg-blue-50/40'
+                        : 'border-[var(--border-gray)] bg-white hover:bg-slate-50'
+                    }`}
+                  >
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-black uppercase tracking-widest text-[var(--deep-navy)]">{s.label}</span>
                     <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{s.tag}</span>
@@ -322,8 +320,19 @@ export const Scenario: React.FC = () => {
                     Earnings INR {s.earnings} | Hours {s.hours}
                   </div>
                 </button>
-              ))}
-            </div>
+                ))}
+              </div>
+              <div className="mt-4 flex items-center justify-between">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  Selected: {selectedScenario}
+                </div>
+                <button
+                  onClick={() => applyScenario(selectedScenario)}
+                  className="px-4 py-2 bg-[var(--gw-blue)] text-white rounded text-[10px] font-black uppercase tracking-widest shadow-sm"
+                >
+                  Trigger Scenario
+                </button>
+              </div>
           </div>
 
           <div className="metric-card">

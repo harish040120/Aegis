@@ -205,6 +205,16 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
         lon: pos?.longitude ?? 80.2707,
       );
       setState(() => _lastAnalysis = result);
+      if (!mounted) return;
+      if ((result.payoutAmount ?? 0) > 0) {
+        context.push(
+          AppRoutes.payoutSuccess,
+          extra: {
+            'amount': result.payoutAmount,
+            'trigger': result.triggerType ?? 'Payout',
+          },
+        );
+      }
       await _loadHome();
     } catch (e) {
       setState(() => _error = 'Analysis failed. Please retry.');
@@ -294,6 +304,23 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
                             'Hello, ${_data!.name.split(' ').first} 👋',
                             style: const TextStyle(
                                 fontSize: 22, fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AegisColors.card,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AegisColors.border),
+                            ),
+                            child: Text(
+                              _data!.workerId,
+                              style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: AegisColors.textSecondary),
+                            ),
                           ),
                           const SizedBox(width: 8),
                           const _AutoPayoutToggle(),
@@ -1280,7 +1307,8 @@ class _PayoutsTabState extends State<PayoutsTab> {
     try {
       final api = context.read<AuthProvider>().api;
       final data = await api.getPayouts(widget.workerId);
-      setState(() => _payouts = data);
+      final filtered = data.where((p) => p.amount > 0).toList();
+      setState(() => _payouts = filtered);
     } catch (_) {
       setState(() => _payouts = []);
     } finally {

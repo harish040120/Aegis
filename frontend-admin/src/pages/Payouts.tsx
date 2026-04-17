@@ -36,8 +36,9 @@ export const Payouts: React.FC = () => {
   }, []);
 
   const payouts = useMemo(() => {
-    if (filter === 'ALL') return stats.recent_payouts;
-    return stats.recent_payouts.filter((p) => p.status === filter);
+    const nonZero = stats.recent_payouts.filter((p) => p.amount > 0);
+    if (filter === 'ALL') return nonZero;
+    return nonZero.filter((p) => p.status === filter);
   }, [stats.recent_payouts, filter]);
 
   const triggerPayout = async (worker_id: string) => {
