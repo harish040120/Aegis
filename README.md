@@ -626,6 +626,7 @@ A flagged claim is **always held, never silently rejected**. Workers can appeal 
 
 ---
 ## 12. Database Schema and Entity Relationships
+```mermaid
 erDiagram
   workers {
     varchar worker_id PK
@@ -821,6 +822,8 @@ erDiagram
   payouts ||--o{ payment_trigger_notifications : "notifies"
   disruption_alerts ||--o{ payouts : "triggers"
   claims ||--o{ transactions : "linked to"
+```
+
 
 ## 13. Running the Project
 
