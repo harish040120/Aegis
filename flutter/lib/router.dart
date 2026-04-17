@@ -8,6 +8,8 @@ import 'services/auth_provider.dart';
 import 'utils/constants.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/start_screen.dart';
+import 'screens/register_start_screen.dart';
 import 'screens/otp_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/plan_screen.dart';
@@ -15,16 +17,18 @@ import 'screens/home_screen.dart';
 
 GoRouter buildRouter(AuthProvider auth) {
   return GoRouter(
-    initialLocation: AppRoutes.splash,
+    initialLocation: AppRoutes.start,
     refreshListenable: auth,
     redirect: (context, state) {
       if (!auth.initialized) return AppRoutes.splash;
 
       final onSplash = state.matchedLocation == AppRoutes.splash;
-      final onAuth   = state.matchedLocation == AppRoutes.login ||
-                       state.matchedLocation == AppRoutes.otp;
-      final onReg    = state.matchedLocation == AppRoutes.register;
-      final onPlan   = state.matchedLocation == AppRoutes.plan;
+      final onAuth = state.matchedLocation == AppRoutes.login ||
+          state.matchedLocation == AppRoutes.otp ||
+          state.matchedLocation == AppRoutes.start ||
+          state.matchedLocation == AppRoutes.registerStart;
+      final onReg = state.matchedLocation == AppRoutes.register;
+      final onPlan = state.matchedLocation == AppRoutes.plan;
 
       if (!auth.isLoggedIn && !onAuth && !onSplash) return AppRoutes.login;
 
@@ -36,8 +40,16 @@ GoRouter buildRouter(AuthProvider auth) {
         builder: (_, __) => const SplashScreen(),
       ),
       GoRoute(
+        path: AppRoutes.start,
+        builder: (_, __) => const StartScreen(),
+      ),
+      GoRoute(
         path: AppRoutes.login,
         builder: (_, __) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.registerStart,
+        builder: (_, __) => const RegisterStartScreen(),
       ),
       GoRoute(
         path: AppRoutes.otp,

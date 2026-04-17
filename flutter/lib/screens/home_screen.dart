@@ -27,6 +27,14 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
 
+    if (auth.workerId == null) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: AegisColors.primary),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -79,7 +87,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           NavigationDestination(
             icon: Icon(Icons.account_balance_wallet_outlined),
-            selectedIcon: Icon(Icons.account_balance_wallet, color: AegisColors.primary),
+            selectedIcon:
+                Icon(Icons.account_balance_wallet, color: AegisColors.primary),
             label: 'Payouts',
           ),
         ],
@@ -99,29 +108,44 @@ class HomeDashboardTab extends StatefulWidget {
 
 class _HomeDashboardTabState extends State<HomeDashboardTab> {
   HomeData? _data;
-  bool _loadingHome  = true;
-  bool _analyzing    = false;
+  LiveMetrics? _live;
+  bool _loadingHome = true;
+  bool _analyzing = false;
   String? _error;
   AnalysisResult? _lastAnalysis;
   Timer? _pingTimer;
+  Timer? _metricsTimer;
+  Timer? _notifTimer;
+  int _lastNotifCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadHome();
+    _loadMetrics();
+    _loadNotifications();
     _pingTimer = Timer.periodic(const Duration(minutes: 1), (_) => _ping());
+    _metricsTimer =
+        Timer.periodic(const Duration(seconds: 30), (_) => _loadMetrics());
+    _notifTimer = Timer.periodic(
+        const Duration(seconds: 30), (_) => _loadNotifications());
   }
 
   @override
   void dispose() {
     _pingTimer?.cancel();
+    _metricsTimer?.cancel();
+    _notifTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _loadHome() async {
-    setState(() { _loadingHome = true; _error = null; });
+    setState(() {
+      _loadingHome = true;
+      _error = null;
+    });
     try {
-      final api  = context.read<AuthProvider>().api;
+      final api = context.read<AuthProvider>().api;
       final data = await api.getHome(widget.workerId);
       setState(() => _data = data);
     } catch (e) {
@@ -131,8 +155,41 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
     }
   }
 
+  Future<void> _loadNotifications() async {
+    try {
+      final api = context.read<AuthProvider>().api;
+      final data = await api.getNotifications(widget.workerId);
+      if (!mounted) return;
+      if (data.isNotEmpty && data.length > _lastNotifCount) {
+        final latest = data.first;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(latest.title),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      _lastNotifCount = data.length;
+    } catch (_) {}
+  }
+
+  Future<void> _loadMetrics() async {
+    try {
+      final api = context.read<AuthProvider>().api;
+      final data = await api.getLiveMetrics(widget.workerId);
+      if (!mounted) return;
+      setState(() => _live = data);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = _error ?? 'Live metrics unavailable.');
+    }
+  }
+
   Future<void> _analyze() async {
-    setState(() { _analyzing = true; _error = null; });
+    setState(() {
+      _analyzing = true;
+      _error = null;
+    });
     try {
       final api = context.read<AuthProvider>().api;
       Position? pos;
@@ -144,8 +201,8 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
 
       final result = await api.analyze(
         workerId: widget.workerId,
-        lat:      pos?.latitude  ?? _data?.riskScore ?? 13.0827,
-        lon:      pos?.longitude ?? 80.2707,
+        lat: pos?.latitude ?? 13.0827,
+        lon: pos?.longitude ?? 80.2707,
       );
       setState(() => _lastAnalysis = result);
       await _loadHome();
@@ -160,10 +217,12 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
     try {
       final api = context.read<AuthProvider>().api;
       Position? pos;
-      try { pos = await Geolocator.getCurrentPosition(); } catch (_) {}
+      try {
+        pos = await Geolocator.getCurrentPosition();
+      } catch (_) {}
       await api.sessionPing(
         workerId: widget.workerId,
-        lat: pos?.latitude  ?? 13.0827,
+        lat: pos?.latitude ?? 13.0827,
         lon: pos?.longitude ?? 80.2707,
       );
     } catch (_) {}
@@ -172,7 +231,8 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
   @override
   Widget build(BuildContext context) {
     if (_loadingHome) {
-      return const Center(child: CircularProgressIndicator(color: AegisColors.primary));
+      return const Center(
+          child: CircularProgressIndicator(color: AegisColors.primary));
     }
 
     return RefreshIndicator(
@@ -189,36 +249,58 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Hello, ${_data!.name.split(' ').first} 👋',
-                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                      Row(
+                        children: [
+                          Text(
+                            'Hello, ${_data!.name.split(' ').first} 👋',
+                            style: const TextStyle(
+                                fontSize: 22, fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(width: 8),
+                          const _AutoPayoutToggle(),
+                        ],
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '${_data!.platform}  ·  ${_data!.zone}',
-                        style: const TextStyle(fontSize: 13, color: AegisColors.textSecondary),
+                        style: const TextStyle(
+                            fontSize: 13, color: AegisColors.textSecondary),
                       ),
+                      if (_data!.planName.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Policy Active: ${_data!.planName}',
+                          style: const TextStyle(
+                              fontSize: 12, color: AegisColors.textSecondary),
+                        ),
+                      ]
                     ],
                   ),
                 ),
-                RiskBadge(level: _data!.riskLevel, score: _data!.riskScore),
+                RiskBadge(
+                  level: _live?.riskLevel ?? _data!.riskLevel,
+                  score: _live?.riskScore ?? _data!.riskScore,
+                ),
               ],
             ),
             const SizedBox(height: 20),
           ],
 
-          // ── Payout banner ──
-          if (_data?.payoutTriggered == true || _lastAnalysis != null) ...[
-            PayoutStatusBanner(
-              status: _lastAnalysis?.status ?? _data?.analysisPayoutStatus ?? '',
-              amount: _lastAnalysis?.payoutAmount ?? _data?.payoutCap,
-            ),
+          // ── Scenario + Alert banner ──
+          if (_live != null) ...[
+            _ScenarioBanner(live: _live!),
+            const SizedBox(height: 12),
+          ],
+          if (_live?.activeAlert != null) ...[
+            _AutoPayoutBanner(alert: _live!.activeAlert!),
             const SizedBox(height: 16),
           ],
 
           // ── Error ──
           if (_error != null) ...[
-            ErrorBanner(message: _error!, onDismiss: () => setState(() => _error = null)),
+            ErrorBanner(
+                message: _error!,
+                onDismiss: () => setState(() => _error = null)),
             const SizedBox(height: 16),
           ],
 
@@ -247,9 +329,10 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
                 ),
                 StatCard(
                   label: 'Income Drop',
-                  value: '${_data!.incomeDropPct.toStringAsFixed(1)}%',
+                  value:
+                      '${(_live?.incomeDrop ?? _data!.incomeDropPct).toStringAsFixed(1)}%',
                   icon: Icons.trending_down_rounded,
-                  valueColor: _data!.incomeDropPct > 50
+                  valueColor: (_live?.incomeDrop ?? _data!.incomeDropPct) > 50
                       ? AegisColors.danger
                       : AegisColors.warning,
                 ),
@@ -268,7 +351,22 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
           if (_data != null) ...[
             const SectionHeader(title: 'RISK STATUS'),
             const SizedBox(height: 12),
-            _RiskCard(data: _data!),
+            if (_live != null)
+              _RiskCard(live: _live!)
+            else
+              _RiskCard(
+                  live: LiveMetrics(
+                workerId: widget.workerId,
+                riskScore: _data!.riskScore,
+                riskLevel: _data!.riskLevel,
+                fraudScore: 0,
+                fraudLevel: 'LOW',
+                incomeDrop: _data!.incomeDropPct,
+                incomeSeverity: _data!.incomeSeverity,
+                activeScenario: 'normal',
+                scenarioActive: false,
+                updatedAt: '',
+              )),
             const SizedBox(height: 20),
           ],
 
@@ -300,12 +398,12 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
 }
 
 class _RiskCard extends StatelessWidget {
-  final HomeData data;
-  const _RiskCard({required this.data});
+  final LiveMetrics live;
+  const _RiskCard({required this.live});
 
   @override
   Widget build(BuildContext context) {
-    final color = riskColor(data.riskLevel);
+    final color = riskColor(live.riskLevel);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -317,19 +415,23 @@ class _RiskCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(riskIcon(data.riskLevel), color: color, size: 24),
+              Icon(riskIcon(live.riskLevel), color: color, size: 24),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Risk Level: ${data.riskLevel}',
-                      style: TextStyle(fontWeight: FontWeight.w700, color: color, fontSize: 15),
+                      'Risk Level: ${live.riskLevel}',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: color,
+                          fontSize: 15),
                     ),
                     Text(
-                      'Score: ${data.riskScore.toStringAsFixed(1)} / 10',
-                      style: const TextStyle(fontSize: 12, color: AegisColors.textSecondary),
+                      'Score: ${live.riskScore.toStringAsFixed(1)} / 10',
+                      style: const TextStyle(
+                          fontSize: 12, color: AegisColors.textSecondary),
                     ),
                   ],
                 ),
@@ -340,21 +442,24 @@ class _RiskCard extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-              value: data.riskScore / 10,
+              value: live.riskScore / 10,
               backgroundColor: AegisColors.border,
               color: color,
               minHeight: 6,
             ),
           ),
-          if (data.lastTriggerType.isNotEmpty) ...[
+          if (live.activeScenario.isNotEmpty &&
+              live.activeScenario != 'normal') ...[
             const SizedBox(height: 10),
             Row(
               children: [
-                const Icon(Icons.bolt, size: 14, color: AegisColors.textSecondary),
+                const Icon(Icons.bolt,
+                    size: 14, color: AegisColors.textSecondary),
                 const SizedBox(width: 4),
                 Text(
-                  'Trigger: ${data.lastTriggerType}',
-                  style: const TextStyle(fontSize: 12, color: AegisColors.textSecondary),
+                  'Scenario: ${live.activeScenario}',
+                  style: const TextStyle(
+                      fontSize: 12, color: AegisColors.textSecondary),
                 ),
               ],
             ),
@@ -383,7 +488,9 @@ class _AnalysisCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Status', style: TextStyle(color: AegisColors.textSecondary, fontSize: 13)),
+              const Text('Status',
+                  style: TextStyle(
+                      color: AegisColors.textSecondary, fontSize: 13)),
               StatusBadge(status: result.status),
             ],
           ),
@@ -392,7 +499,9 @@ class _AnalysisCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Payout', style: TextStyle(color: AegisColors.textSecondary, fontSize: 13)),
+                const Text('Payout',
+                    style: TextStyle(
+                        color: AegisColors.textSecondary, fontSize: 13)),
                 Text(
                   '₹${result.payoutAmount!.toStringAsFixed(0)}',
                   style: const TextStyle(
@@ -409,7 +518,9 @@ class _AnalysisCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Trigger', style: TextStyle(color: AegisColors.textSecondary, fontSize: 13)),
+                const Text('Trigger',
+                    style: TextStyle(
+                        color: AegisColors.textSecondary, fontSize: 13)),
                 Text(result.triggerType!, style: const TextStyle(fontSize: 13)),
               ],
             ),
@@ -418,11 +529,13 @@ class _AnalysisCard extends StatelessWidget {
             const Divider(height: 20, color: AegisColors.border),
             Row(
               children: [
-                const Icon(Icons.info_outline, size: 13, color: AegisColors.warning),
+                const Icon(Icons.info_outline,
+                    size: 13, color: AegisColors.warning),
                 const SizedBox(width: 6),
                 Text(
                   'Premium updated to ₹${result.newWeeklyPremium!.toStringAsFixed(0)}/week',
-                  style: const TextStyle(fontSize: 12, color: AegisColors.warning),
+                  style:
+                      const TextStyle(fontSize: 12, color: AegisColors.warning),
                 ),
               ],
             ),
@@ -443,7 +556,7 @@ class AlertsTab extends StatefulWidget {
 }
 
 class _AlertsTabState extends State<AlertsTab> {
-  List<WeatherAlert>? _alerts;
+  List<AlertRecord>? _alerts;
   List<AegisNotification>? _notifications;
   bool _loading = true;
 
@@ -457,11 +570,17 @@ class _AlertsTabState extends State<AlertsTab> {
     setState(() => _loading = true);
     try {
       final api = context.read<AuthProvider>().api;
-      final alerts = await api.getAlerts(widget.workerId);
-      final notifs  = await api.getNotifications(widget.workerId);
-      setState(() { _alerts = alerts; _notifications = notifs; });
+      final alerts = await api.getAlertHistory(widget.workerId);
+      final notifs = await api.getNotifications(widget.workerId);
+      setState(() {
+        _alerts = alerts;
+        _notifications = notifs;
+      });
     } catch (_) {
-      setState(() { _alerts = []; _notifications = []; });
+      setState(() {
+        _alerts = [];
+        _notifications = [];
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -469,7 +588,9 @@ class _AlertsTabState extends State<AlertsTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator(color: AegisColors.primary));
+    if (_loading)
+      return const Center(
+          child: CircularProgressIndicator(color: AegisColors.primary));
 
     return RefreshIndicator(
       color: AegisColors.primary,
@@ -481,15 +602,18 @@ class _AlertsTabState extends State<AlertsTab> {
             const SectionHeader(title: 'NOTIFICATIONS'),
             const SizedBox(height: 12),
             ..._notifications!.map((n) => _NotifCard(
-              notif: n,
-              onRead: () async {
-                await context.read<AuthProvider>().api.markNotificationRead(n.notifId);
-                _load();
-              },
-            )),
+                  notif: n,
+                  onRead: () async {
+                    await context
+                        .read<AuthProvider>()
+                        .api
+                        .markNotificationRead(n.notifId);
+                    _load();
+                  },
+                )),
             const SizedBox(height: 20),
           ],
-          const SectionHeader(title: 'ACTIVE WEATHER ALERTS'),
+          const SectionHeader(title: 'ALERT HISTORY'),
           const SizedBox(height: 12),
           if (_alerts?.isEmpty ?? true)
             const Center(
@@ -497,19 +621,22 @@ class _AlertsTabState extends State<AlertsTab> {
                 padding: EdgeInsets.all(32),
                 child: Column(
                   children: [
-                    Icon(Icons.wb_sunny_outlined, color: AegisColors.primary, size: 40),
+                    Icon(Icons.wb_sunny_outlined,
+                        color: AegisColors.primary, size: 40),
                     SizedBox(height: 12),
-                    Text('No active alerts', style: TextStyle(color: AegisColors.textSecondary)),
+                    Text('No active alerts',
+                        style: TextStyle(color: AegisColors.textSecondary)),
                     Text(
                       'All clear in your zone.',
-                      style: TextStyle(fontSize: 12, color: AegisColors.textMuted),
+                      style:
+                          TextStyle(fontSize: 12, color: AegisColors.textMuted),
                     ),
                   ],
                 ),
               ),
             )
           else
-            ..._alerts!.map((a) => _AlertCard(alert: a)),
+            ..._alerts!.map((a) => _AlertHistoryCard(alert: a)),
         ],
       ),
     );
@@ -551,10 +678,12 @@ class _NotifCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(notif.title,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 13)),
                 const SizedBox(height: 3),
                 Text(notif.body,
-                    style: const TextStyle(fontSize: 12, color: AegisColors.textSecondary)),
+                    style: const TextStyle(
+                        fontSize: 12, color: AegisColors.textSecondary)),
                 if (notif.amount != null) ...[
                   const SizedBox(height: 6),
                   Text(
@@ -571,7 +700,8 @@ class _NotifCard extends StatelessWidget {
           ),
           TextButton(
             onPressed: onRead,
-            child: const Text('Mark read', style: TextStyle(fontSize: 11, color: AegisColors.primary)),
+            child: const Text('Mark read',
+                style: TextStyle(fontSize: 11, color: AegisColors.primary)),
           ),
         ],
       ),
@@ -579,9 +709,9 @@ class _NotifCard extends StatelessWidget {
   }
 }
 
-class _AlertCard extends StatelessWidget {
-  final WeatherAlert alert;
-  const _AlertCard({required this.alert});
+class _AlertHistoryCard extends StatelessWidget {
+  final AlertRecord alert;
+  const _AlertHistoryCard({required this.alert});
 
   @override
   Widget build(BuildContext context) {
@@ -603,28 +733,199 @@ class _AlertCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  alert.typeLabel,
+                  alert.type,
                   style: TextStyle(fontWeight: FontWeight.w700, color: color),
                 ),
               ),
-              StatusBadge(status: alert.severity),
+              StatusBadge(status: alert.status),
             ],
           ),
           const SizedBox(height: 10),
           Row(
             children: [
-              _MetricChip(label: 'Measured', value: alert.metric.toStringAsFixed(0)),
-              const SizedBox(width: 8),
-              _MetricChip(label: 'Threshold', value: alert.threshold.toStringAsFixed(0)),
+              _MetricChip(
+                  label: 'Metric',
+                  value: (alert.metricValue ?? 0).toStringAsFixed(0)),
               const SizedBox(width: 8),
               _MetricChip(
-                label: 'Trigger',
-                value: '${(alert.triggerPct * 100).toStringAsFixed(0)}%',
+                  label: 'Threshold',
+                  value: (alert.thresholdValue ?? 0).toStringAsFixed(0)),
+              const SizedBox(width: 8),
+              _MetricChip(
+                label: 'Status',
+                value: alert.status,
                 highlight: true,
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Text(
+            'Expires at: ${alert.expiresAt}',
+            style:
+                const TextStyle(fontSize: 11, color: AegisColors.textSecondary),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _ScenarioBanner extends StatelessWidget {
+  final LiveMetrics live;
+  const _ScenarioBanner({required this.live});
+
+  @override
+  Widget build(BuildContext context) {
+    final active = live.scenarioActive;
+    final title = active ? 'Scenario Active' : 'Monitoring';
+    final subtitle = active
+        ? 'Scenario: ${live.activeScenario}'
+        : 'Safe. No active scenario triggers.';
+    final color = active ? AegisColors.warning : AegisColors.success;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(active ? Icons.cloud_queue : Icons.verified_user,
+              color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style:
+                        TextStyle(fontWeight: FontWeight.w700, color: color)),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: const TextStyle(
+                        fontSize: 12, color: AegisColors.textSecondary)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AutoPayoutBanner extends StatelessWidget {
+  final LiveAlert alert;
+
+  const _AutoPayoutBanner({required this.alert});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = riskColor(alert.severity);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.bolt_rounded, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('🌧️ ${alert.type} Detected',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w700, color: color)),
+                const SizedBox(height: 2),
+                const Text('Parametric payout triggered automatically.',
+                    style: TextStyle(
+                        fontSize: 12, color: AegisColors.textSecondary)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              'AUTO-PAID',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AutoTriggeredBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AegisColors.primary.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AegisColors.primary.withOpacity(0.4)),
+      ),
+      child: const Text(
+        'AUTO-TRIGGERED',
+        style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: AegisColors.primary),
+      ),
+    );
+  }
+}
+
+class _AutoPayoutToggle extends StatefulWidget {
+  const _AutoPayoutToggle();
+
+  @override
+  State<_AutoPayoutToggle> createState() => _AutoPayoutToggleState();
+}
+
+class _AutoPayoutToggleState extends State<_AutoPayoutToggle> {
+  bool _enabled = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => setState(() => _enabled = !_enabled),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: _enabled
+              ? AegisColors.success.withOpacity(0.15)
+              : AegisColors.border,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+              color: _enabled ? AegisColors.success : AegisColors.border),
+        ),
+        child: Row(
+          children: [
+            Icon(_enabled ? Icons.bolt : Icons.bolt_outlined,
+                size: 12,
+                color: _enabled ? AegisColors.success : AegisColors.textMuted),
+            const SizedBox(width: 4),
+            Text(
+              _enabled ? 'Auto-Payouts On' : 'Auto-Payouts Off',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: _enabled ? AegisColors.success : AegisColors.textMuted,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -635,7 +936,8 @@ class _MetricChip extends StatelessWidget {
   final String value;
   final bool highlight;
 
-  const _MetricChip({required this.label, required this.value, this.highlight = false});
+  const _MetricChip(
+      {required this.label, required this.value, this.highlight = false});
 
   @override
   Widget build(BuildContext context) {
@@ -647,7 +949,9 @@ class _MetricChip extends StatelessWidget {
             : AegisColors.surface,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: highlight ? AegisColors.primary.withOpacity(0.3) : AegisColors.border,
+          color: highlight
+              ? AegisColors.primary.withOpacity(0.3)
+              : AegisColors.border,
         ),
       ),
       child: Column(
@@ -656,9 +960,12 @@ class _MetricChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: highlight ? AegisColors.primary : AegisColors.textPrimary,
+                color:
+                    highlight ? AegisColors.primary : AegisColors.textPrimary,
               )),
-          Text(label, style: const TextStyle(fontSize: 9, color: AegisColors.textMuted)),
+          Text(label,
+              style:
+                  const TextStyle(fontSize: 9, color: AegisColors.textMuted)),
         ],
       ),
     );
@@ -700,14 +1007,20 @@ class _CoverageTabState extends State<CoverageTab> {
     try {
       final dt = DateTime.parse(iso);
       return DateFormat('dd MMM yyyy, hh:mm a').format(dt.toLocal());
-    } catch (_) { return iso; }
+    } catch (_) {
+      return iso;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator(color: AegisColors.primary));
+    if (_loading)
+      return const Center(
+          child: CircularProgressIndicator(color: AegisColors.primary));
     if (_data == null) {
-      return const Center(child: Text('No active coverage.', style: TextStyle(color: AegisColors.textSecondary)));
+      return const Center(
+          child: Text('No active coverage.',
+              style: TextStyle(color: AegisColors.textSecondary)));
     }
 
     return RefreshIndicator(
@@ -733,7 +1046,8 @@ class _CoverageTabState extends State<CoverageTab> {
             ),
             child: Column(
               children: [
-                const Icon(Icons.shield_rounded, color: AegisColors.primary, size: 40),
+                const Icon(Icons.shield_rounded,
+                    color: AegisColors.primary, size: 40),
                 const SizedBox(height: 10),
                 Text(
                   _data!.planName,
@@ -747,18 +1061,27 @@ class _CoverageTabState extends State<CoverageTab> {
                 const SizedBox(height: 4),
                 Text(
                   'Policy #${_data!.policyId}',
-                  style: const TextStyle(fontSize: 12, color: AegisColors.textSecondary),
+                  style: const TextStyle(
+                      fontSize: 12, color: AegisColors.textSecondary),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 20),
 
-          _CoverageRow(label: 'Weekly Premium',    value: '₹${_data!.weeklyPremium.toStringAsFixed(0)}'),
-          _CoverageRow(label: 'Payout Cap',        value: '₹${_data!.payoutCap.toStringAsFixed(0)}', highlight: true),
-          _CoverageRow(label: 'Coverage Start',    value: _formatDate(_data!.coverageStart)),
-          _CoverageRow(label: 'Coverage End',      value: _formatDate(_data!.coverageEnd)),
-          _CoverageRow(label: 'KYC Status',        value: _data!.kycStatus),
+          _CoverageRow(
+              label: 'Weekly Premium',
+              value: '₹${_data!.weeklyPremium.toStringAsFixed(0)}'),
+          _CoverageRow(
+              label: 'Payout Cap',
+              value: '₹${_data!.payoutCap.toStringAsFixed(0)}',
+              highlight: true),
+          _CoverageRow(
+              label: 'Coverage Start',
+              value: _formatDate(_data!.coverageStart)),
+          _CoverageRow(
+              label: 'Coverage End', value: _formatDate(_data!.coverageEnd)),
+          _CoverageRow(label: 'KYC Status', value: _data!.kycStatus),
 
           const SizedBox(height: 24),
           if (_data!.kycStatus == 'PENDING') ...[
@@ -771,12 +1094,14 @@ class _CoverageTabState extends State<CoverageTab> {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.info_outline, color: AegisColors.warning, size: 18),
+                  Icon(Icons.info_outline,
+                      color: AegisColors.warning, size: 18),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       'Complete KYC (Aadhaar) to unlock faster claim processing.',
-                      style: TextStyle(fontSize: 13, color: AegisColors.warning),
+                      style:
+                          TextStyle(fontSize: 13, color: AegisColors.warning),
                     ),
                   ),
                 ],
@@ -804,14 +1129,17 @@ class _CoverageTabState extends State<CoverageTab> {
       ),
       builder: (_) => Padding(
         padding: EdgeInsets.only(
-          left: 24, right: 24, top: 24,
+          left: 24,
+          right: 24,
+          top: 24,
           bottom: MediaQuery.of(context).viewInsets.bottom + 24,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('KYC Verification', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            const Text('KYC Verification',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
             const Text(
               'Only the last 4 digits are stored (hashed). Your full Aadhaar is never retained.',
@@ -850,7 +1178,8 @@ class _CoverageRow extends StatelessWidget {
   final String value;
   final bool highlight;
 
-  const _CoverageRow({required this.label, required this.value, this.highlight = false});
+  const _CoverageRow(
+      {required this.label, required this.value, this.highlight = false});
 
   @override
   Widget build(BuildContext context) {
@@ -862,7 +1191,9 @@ class _CoverageRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(label, style: const TextStyle(color: AegisColors.textSecondary, fontSize: 14)),
+            child: Text(label,
+                style: const TextStyle(
+                    color: AegisColors.textSecondary, fontSize: 14)),
           ),
           Text(
             value,
@@ -914,14 +1245,20 @@ class _PayoutsTabState extends State<PayoutsTab> {
     try {
       final dt = DateTime.parse(iso);
       return DateFormat('dd MMM, hh:mm a').format(dt.toLocal());
-    } catch (_) { return iso; }
+    } catch (_) {
+      return iso;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator(color: AegisColors.primary));
+    if (_loading)
+      return const Center(
+          child: CircularProgressIndicator(color: AegisColors.primary));
 
-    final total = _payouts?.fold<double>(0, (s, p) => s + (p.payoutStatus == 'PAID' ? p.amount : 0)) ?? 0;
+    final total = _payouts?.fold<double>(
+            0, (s, p) => s + (p.payoutStatus == 'PAID' ? p.amount : 0)) ??
+        0;
 
     return RefreshIndicator(
       color: AegisColors.primary,
@@ -944,11 +1281,14 @@ class _PayoutsTabState extends State<PayoutsTab> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text('Total Paid Out',
-                          style: TextStyle(fontSize: 12, color: AegisColors.textSecondary)),
+                          style: TextStyle(
+                              fontSize: 12, color: AegisColors.textSecondary)),
                       Text(
                         '₹${total.toStringAsFixed(0)}',
                         style: const TextStyle(
-                          fontSize: 28, fontWeight: FontWeight.w900, color: AegisColors.primary,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: AegisColors.primary,
                         ),
                       ),
                     ],
@@ -959,10 +1299,12 @@ class _PayoutsTabState extends State<PayoutsTab> {
                   children: [
                     Text(
                       '${_payouts?.length ?? 0}',
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                      style: const TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.w800),
                     ),
                     const Text('Total Claims',
-                        style: TextStyle(fontSize: 11, color: AegisColors.textSecondary)),
+                        style: TextStyle(
+                            fontSize: 11, color: AegisColors.textSecondary)),
                   ],
                 ),
               ],
@@ -979,59 +1321,65 @@ class _PayoutsTabState extends State<PayoutsTab> {
                 padding: EdgeInsets.all(32),
                 child: Column(
                   children: [
-                    Icon(Icons.receipt_long_outlined, color: AegisColors.textMuted, size: 40),
+                    Icon(Icons.receipt_long_outlined,
+                        color: AegisColors.textMuted, size: 40),
                     SizedBox(height: 12),
-                    Text('No payouts yet', style: TextStyle(color: AegisColors.textSecondary)),
+                    Text('No payouts yet',
+                        style: TextStyle(color: AegisColors.textSecondary)),
                   ],
                 ),
               ),
             )
           else
             ..._payouts!.map((p) => Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AegisColors.card,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AegisColors.border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          p.triggerType,
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                        ),
-                      ),
-                      StatusBadge(status: p.payoutStatus),
-                    ],
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AegisColors.card,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AegisColors.border),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              p.triggerType,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700, fontSize: 14),
+                            ),
+                          ),
+                          if (p.autoTriggered) _AutoTriggeredBadge(),
+                          const SizedBox(width: 6),
+                          StatusBadge(status: p.payoutStatus),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Text(
+                            '₹${p.amount.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: AegisColors.primary,
+                            ),
+                          ),
+                          const Spacer(),
+                          RiskBadge(level: p.riskLevel),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
                       Text(
-                        '₹${p.amount.toStringAsFixed(0)}',
+                        _formatDate(p.triggeredAt),
                         style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: AegisColors.primary,
-                        ),
+                            fontSize: 11, color: AegisColors.textMuted),
                       ),
-                      const Spacer(),
-                      RiskBadge(level: p.riskLevel),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _formatDate(p.triggeredAt),
-                    style: const TextStyle(fontSize: 11, color: AegisColors.textMuted),
-                  ),
-                ],
-              ),
-            )),
+                )),
         ],
       ),
     );

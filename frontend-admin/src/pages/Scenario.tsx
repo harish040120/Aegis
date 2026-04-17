@@ -26,16 +26,17 @@ type ParamState = {
 
 type ParamMeta = Record<string, { min: number; max: number }>;
 
-type AlertItem = {
-  type: string;
-  typeLabel: string;
-  severity: string;
-  metric: number;
-  threshold: number;
-  trigger_pct: number;
-  active: boolean;
-  is_fraud?: boolean;
-};
+  type AlertItem = {
+    alert_id: number;
+    type: string;
+    severity: string;
+    metric_value: number | null;
+    threshold_value: number | null;
+    claimed: boolean;
+    created_at: string;
+    expires_at: string;
+    status: string;
+  };
 
 const scenarioPresets = [
   { key: 'normal', label: 'Normal', tag: 'Baseline', rain: 0, aqi: 45, earnings: 1800, hours: 7.5 },
@@ -67,7 +68,7 @@ const defaultMeta: ParamMeta = {
 export const Scenario: React.FC = () => {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [selectedWorker, setSelectedWorker] = useState('W001');
-  const [selectedScenario, setSelectedScenario] = useState('severe_flood');
+  const [selectedScenario, setSelectedScenario] = useState('normal');
   const [params, setParams] = useState<ParamState>(defaultParams);
   const [paramMeta, setParamMeta] = useState<ParamMeta>(defaultMeta);
   const [analysis, setAnalysis] = useState<any>(null);
@@ -118,8 +119,8 @@ export const Scenario: React.FC = () => {
   };
 
   const loadAlerts = async (workerId: string) => {
-    const data = await apiGet(`/api/current-alerts?worker_id=${workerId}`, 'HUB');
-    setAlerts(data?.alerts || []);
+    const data = await apiGet(`/api/v1/alerts/${workerId}`);
+    setAlerts(data || []);
   };
 
   useEffect(() => {
@@ -137,6 +138,7 @@ export const Scenario: React.FC = () => {
     if (data?.params) {
       setParamsFromHub(data.params);
     }
+    await apiPost('/api/v1/analyze', { worker_id: selectedWorker, lat, lon });
     await loadAlerts(selectedWorker);
   };
 
@@ -205,12 +207,13 @@ export const Scenario: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Last Run: {lastUpdated || '--'}</span>
-          <button
-            onClick={runAnalysis}
-            className="px-4 py-2 bg-[var(--gw-blue)] text-white rounded text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
-          >
-            <Play size={14} /> Run Analysis
-          </button>
+           <button
+             onClick={runAnalysis}
+             className="px-4 py-2 bg-slate-200 text-slate-500 rounded text-[10px] font-black uppercase tracking-widest flex items-center gap-2 cursor-not-allowed"
+             disabled
+           >
+             <Play size={14} /> Auto-Analysis Enabled
+           </button>
         </div>
       </div>
 
@@ -381,16 +384,19 @@ export const Scenario: React.FC = () => {
               <div className="text-xs text-slate-400">No alerts available</div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {alerts.map((alert, idx) => (
-                  <div key={`${alert.type}-${idx}`} className="p-3 rounded border border-[var(--border-gray)] bg-slate-50">
+                {alerts.map((alert) => (
+                  <div key={alert.alert_id} className="p-3 rounded border border-[var(--border-gray)] bg-slate-50">
                     <div className="text-[10px] font-black uppercase tracking-widest text-[var(--deep-navy)]">
-                      {alert.typeLabel || alert.type}
+                      {alert.type}
                     </div>
                     <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-1">
-                      Metric {alert.metric} | Threshold {alert.threshold}
+                      Metric {alert.metric_value ?? 0} | Threshold {alert.threshold_value ?? 0}
+                    </div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-1">
+                      Expires {new Date(alert.expires_at).toLocaleTimeString()}
                     </div>
                     <div className="mt-2 flex items-center gap-2">
-                      <span className={`status-pill ${alert.active ? 'status-live' : 'status-watch'}`}>{alert.active ? 'Active' : 'Idle'}</span>
+                      <span className={`status-pill ${alert.status === 'ACTIVE' ? 'status-live' : 'status-watch'}`}>{alert.status}</span>
                       <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{alert.severity}</span>
                     </div>
                   </div>

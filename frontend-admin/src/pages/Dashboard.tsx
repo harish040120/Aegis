@@ -31,6 +31,7 @@ type AdminStats = {
     status: string;
     triggered_at: string;
     fraud_score: number;
+    auto_triggered?: boolean;
   }>;
   active_alerts: Array<{
     trigger_type: string;
@@ -232,7 +233,14 @@ export const Dashboard: React.FC = () => {
                     <span className="text-[11px] font-black uppercase tracking-widest text-[var(--deep-navy)]">{p.worker_id}</span>
                     <span className={`status-pill ${p.status === 'PAID' ? 'status-live' : p.status === 'HELD' ? 'status-watch' : 'status-breach'}`}>{p.status}</span>
                   </div>
-                  <div className="mt-2 text-[10px] uppercase tracking-widest text-slate-500">{p.trigger_type}</div>
+                  <div className="mt-2 flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-500">
+                    <span>{p.trigger_type}</span>
+                    {p.auto_triggered && (
+                      <span className="text-[9px] font-black px-2 py-[2px] rounded bg-emerald-100 text-emerald-700 uppercase tracking-widest">
+                        AUTO
+                      </span>
+                    )}
+                  </div>
                   <div className="mt-2 flex items-center justify-between text-[11px] font-bold text-[var(--deep-navy)]">
                     <span>INR {p.amount}</span>
                     <span className="text-[10px] text-slate-400">Fraud {p.fraud_score?.toFixed(2)}</span>

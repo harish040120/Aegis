@@ -47,6 +47,8 @@ ID_FORMATS.md
 PROJECT_OVERVIEW.md
 Readme_1.md
 DEMO_GUIDE.md
+aegis_schema_v7_updated.sql
+*.sql
 
 # Alternate name variants
 frontend.md

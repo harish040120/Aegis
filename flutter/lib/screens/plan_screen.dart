@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../services/auth_provider.dart';
 import '../utils/constants.dart';
 import '../widgets/shared_widgets.dart';
+import '../models/models.dart';
 
 class PlanScreen extends StatefulWidget {
   const PlanScreen({super.key});
@@ -19,17 +20,52 @@ class _PlanScreenState extends State<PlanScreen> {
   int _selected = 1; // default: STANDARD
   bool _loading = false;
   String? _error;
+  bool _loadingTiers = true;
+  String? _pricingError;
+  List<PricingTier> _tiers = [];
 
-  Future<void> _subscribe() async {
-    setState(() { _loading = true; _error = null; });
+  @override
+  void initState() {
+    super.initState();
+    _loadPricing();
+  }
+
+  Future<void> _loadPricing() async {
     try {
       final auth = context.read<AuthProvider>();
-      final plan = kPlans[_selected];
+      final pricing = await auth.api.getPricingTiers(workerId: auth.workerId);
+      setState(() {
+        _tiers = pricing.tiers;
+        _loadingTiers = false;
+        final recIndex = _tiers.indexWhere((t) => t.rec == true);
+        if (recIndex >= 0) _selected = recIndex;
+      });
+    } catch (_) {
+      setState(() {
+        _pricingError = 'Could not load pricing tiers.';
+        _loadingTiers = false;
+      });
+    }
+  }
+
+  Future<void> _subscribe() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final auth = context.read<AuthProvider>();
+      final plan = _tiers.isNotEmpty ? _tiers[_selected] : kPlans[_selected];
+      final planName =
+          plan is PricingTier ? plan.name : (plan as PlanInfo).name;
+      final weeklyPremium = plan is PricingTier
+          ? plan.premium.toDouble()
+          : (plan as PlanInfo).weeklyPremium;
       await auth.api.subscribe(
-        workerId:      auth.workerId!,
-        planName:      plan.name,
-        weeklyPremium: plan.weeklyPremium,
-        paymentRef:    'demo_payment_${DateTime.now().millisecondsSinceEpoch}',
+        workerId: auth.workerId!,
+        planName: planName,
+        weeklyPremium: weeklyPremium,
+        paymentRef: 'demo_payment_${DateTime.now().millisecondsSinceEpoch}',
       );
       if (mounted) context.go(AppRoutes.home);
     } catch (e) {
@@ -57,14 +93,33 @@ class _PlanScreenState extends State<PlanScreen> {
                   children: [
                     const Text(
                       'Your protection starts the moment you subscribe.',
-                      style: TextStyle(fontSize: 15, color: AegisColors.textSecondary),
+                      style: TextStyle(
+                          fontSize: 15, color: AegisColors.textSecondary),
                     ),
                     const SizedBox(height: 24),
-                    ...List.generate(kPlans.length, (i) => _PlanCard(
-                      plan: kPlans[i],
-                      selected: _selected == i,
-                      onTap: () => setState(() => _selected = i),
-                    )),
+                    if (_loadingTiers)
+                      const Center(
+                          child: CircularProgressIndicator(
+                              color: AegisColors.primary))
+                    else if (_pricingError != null)
+                      Text(_pricingError!,
+                          style: const TextStyle(color: AegisColors.danger))
+                    else if (_tiers.isNotEmpty)
+                      ...List.generate(
+                          _tiers.length,
+                          (i) => _PricingCard(
+                                tier: _tiers[i],
+                                selected: _selected == i,
+                                onTap: () => setState(() => _selected = i),
+                              ))
+                    else
+                      ...List.generate(
+                          kPlans.length,
+                          (i) => _PlanCard(
+                                plan: kPlans[i],
+                                selected: _selected == i,
+                                onTap: () => setState(() => _selected = i),
+                              )),
                     const SizedBox(height: 16),
                     if (_error != null) ...[
                       ErrorBanner(
@@ -82,12 +137,15 @@ class _PlanScreenState extends State<PlanScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.info_outline, size: 16, color: AegisColors.textSecondary),
+                          const Icon(Icons.info_outline,
+                              size: 16, color: AegisColors.textSecondary),
                           const SizedBox(width: 10),
                           const Expanded(
                             child: Text(
                               'KYC (Aadhaar) is optional at this stage. You can complete it later from Settings.',
-                              style: TextStyle(fontSize: 12, color: AegisColors.textSecondary),
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: AegisColors.textSecondary),
                             ),
                           ),
                         ],
@@ -104,10 +162,13 @@ class _PlanScreenState extends State<PlanScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Selected Plan', style: TextStyle(color: AegisColors.textSecondary)),
+                      const Text('Selected Plan',
+                          style: TextStyle(color: AegisColors.textSecondary)),
                       Text(
                         kPlans[_selected].name,
-                        style: const TextStyle(fontWeight: FontWeight.w700, color: AegisColors.primary),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: AegisColors.primary),
                       ),
                     ],
                   ),
@@ -115,7 +176,8 @@ class _PlanScreenState extends State<PlanScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Weekly Premium', style: TextStyle(color: AegisColors.textSecondary)),
+                      const Text('Weekly Premium',
+                          style: TextStyle(color: AegisColors.textSecondary)),
                       Text(
                         '₹${kPlans[_selected].weeklyPremium.toStringAsFixed(0)}',
                         style: const TextStyle(fontWeight: FontWeight.w700),
@@ -143,7 +205,8 @@ class _PlanCard extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  const _PlanCard({required this.plan, required this.selected, required this.onTap});
+  const _PlanCard(
+      {required this.plan, required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -154,7 +217,9 @@ class _PlanCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 14),
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: selected ? AegisColors.primary.withOpacity(0.08) : AegisColors.card,
+          color: selected
+              ? AegisColors.primary.withOpacity(0.08)
+              : AegisColors.card,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: selected ? AegisColors.primary : AegisColors.border,
@@ -175,13 +240,16 @@ class _PlanCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
-                          color: selected ? AegisColors.primary : AegisColors.textPrimary,
+                          color: selected
+                              ? AegisColors.primary
+                              : AegisColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         plan.tagline,
-                        style: const TextStyle(fontSize: 12, color: AegisColors.textSecondary),
+                        style: const TextStyle(
+                            fontSize: 12, color: AegisColors.textSecondary),
                       ),
                     ],
                   ),
@@ -191,11 +259,13 @@ class _PlanCard extends StatelessWidget {
                   children: [
                     Text(
                       '₹${plan.weeklyPremium.toStringAsFixed(0)}',
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                      style: const TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.w900),
                     ),
                     const Text(
                       '/week',
-                      style: TextStyle(fontSize: 11, color: AegisColors.textSecondary),
+                      style: TextStyle(
+                          fontSize: 11, color: AegisColors.textSecondary),
                     ),
                   ],
                 ),
@@ -219,15 +289,102 @@ class _PlanCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             ...plan.features.map((f) => Padding(
-              padding: const EdgeInsets.only(bottom: 5),
-              child: Row(
-                children: [
-                  const Icon(Icons.check_circle_outline, size: 14, color: AegisColors.primary),
-                  const SizedBox(width: 8),
-                  Text(f, style: const TextStyle(fontSize: 13, color: AegisColors.textSecondary)),
-                ],
-              ),
-            )),
+                  padding: const EdgeInsets.only(bottom: 5),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle_outline,
+                          size: 14, color: AegisColors.primary),
+                      const SizedBox(width: 8),
+                      Text(f,
+                          style: const TextStyle(
+                              fontSize: 13, color: AegisColors.textSecondary)),
+                    ],
+                  ),
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PricingCard extends StatelessWidget {
+  final PricingTier tier;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PricingCard(
+      {required this.tier, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: selected
+              ? AegisColors.primary.withOpacity(0.08)
+              : AegisColors.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? AegisColors.primary : AegisColors.border,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tier.name,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: selected
+                              ? AegisColors.primary
+                              : AegisColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        tier.rec ? 'Recommended' : 'Coverage Tier',
+                        style: const TextStyle(
+                            fontSize: 12, color: AegisColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '₹${tier.premium}',
+                      style: const TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.w900),
+                    ),
+                    const Text(
+                      '/week',
+                      style: TextStyle(
+                          fontSize: 11, color: AegisColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Weekly payout cap: ₹${tier.cap}',
+              style: const TextStyle(
+                  fontSize: 12, color: AegisColors.textSecondary),
+            )
           ],
         ),
       ),

@@ -12,6 +12,7 @@ type AdminStats = {
     status: string;
     triggered_at: string;
     fraud_score: number;
+    auto_triggered?: boolean;
   }>;
 };
 
@@ -99,7 +100,16 @@ export const Payouts: React.FC = () => {
                 <tr key={p.payout_id}>
                   <td className="data-mono font-bold text-[var(--gw-blue)] uppercase">{p.worker_id}</td>
                   <td className="text-xs font-bold text-[var(--deep-navy)]">{p.name}</td>
-                  <td className="text-xs font-bold text-slate-600 uppercase tracking-tight">{p.trigger_type}</td>
+                  <td className="text-xs font-bold text-slate-600 uppercase tracking-tight">
+                    <div className="flex items-center gap-2">
+                      <span>{p.trigger_type}</span>
+                      {p.auto_triggered && (
+                        <span className="text-[9px] font-black px-2 py-[2px] rounded bg-emerald-100 text-emerald-700 uppercase tracking-widest">
+                          AUTO
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="font-black data-mono text-[var(--deep-navy)]">₹{p.amount}</td>
                   <td className="data-mono font-bold">{(p.fraud_score || 0).toFixed(2)}</td>
                   <td>

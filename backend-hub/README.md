@@ -27,11 +27,8 @@ Create a `.env` file with:
 ```
 WEATHER_API_KEY=your_openweathermap_api_key
 WAQI_API_KEY=your_waqi_api_key
-DB_HOST=localhost
-DB_PORT=2003
-DB_NAME=aegis_intelligence
-DB_USER=aegis_admin
-DB_PASSWORD=your_db_password
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_or_publishable_key
 PORT=3015
 ```
 

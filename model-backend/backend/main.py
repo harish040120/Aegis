@@ -11,21 +11,14 @@ from pydantic import BaseModel
 import pickle
 import numpy as np
 import pandas as pd
-
-try:
-    from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-    from sklearn.preprocessing import LabelEncoder
-    print("[MODEL] Sklearn loaded successfully")
-except ImportError as e:
-    print(f"[MODEL] Sklearn not available: {e}")
 import os
 import httpx
 import asyncio
 import asyncpg
+from urllib.parse import urlparse
 import google.generativeai as genai
 import json
 from datetime import datetime, timedelta
-from decimal import Decimal
 from typing import Optional, List
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -35,6 +28,16 @@ import razorpay
 from typing import Optional, List, Any, cast
 
 from fraud_enhanced import apply_delivery_fraud_rules
+from decimal import Decimal
+
+def normalize_row(row):
+    if not row:
+        return row
+    row = dict(row)
+    for k, v in row.items():
+        if isinstance(v, Decimal):
+            row[k] = float(v)
+    return row
 
 app = FastAPI(title="Aegis Subscription Hub", version="6.0.0")
 
@@ -54,7 +57,8 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 DATA_HUB_URL = os.getenv("DATA_HUB_URL", "http://localhost:3015/api/risk-data")
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://aegis_admin:aegis_secure_pass@localhost:2003/aegis_intelligence")
+DATABASE_URL = os.getenv("DATABASE_URL")
+print("DATABASE_URL =", DATABASE_URL)
 GOOGLE_KEY = os.environ.get("GOOGLE_API_KEY", "")
 HUB_URL = os.getenv("DATA_HUB_URL", "http://localhost:3015").replace("/api/risk-data", "")
 
@@ -65,8 +69,26 @@ if GOOGLE_KEY:
     cast_genai = cast(Any, genai)
     cast_genai.configure(api_key=GOOGLE_KEY)
 
+def _ssl_mode_from_url(url: str) -> str | None:
+    if not url:
+        return None
+    parsed = urlparse(url)
+    if not parsed.query:
+        return None
+    for item in parsed.query.split("&"):
+        key, _, value = item.partition("=")
+        if key == "sslmode":
+            return value
+    return None
+
+
 async def get_db_conn():
-    return await asyncpg.connect(DATABASE_URL)
+    ssl_mode = _ssl_mode_from_url(DATABASE_URL or "")
+    ssl_setting = "require" if ssl_mode == "require" else "prefer"
+    return await asyncpg.connect(
+        DATABASE_URL,
+        ssl=ssl_setting
+    )
 
 # --- Schemas ---
 
@@ -119,15 +141,9 @@ MODELS_READY = False
 def _load(filename):
     path = os.path.join(BASE_DIR, filename)
     if not os.path.exists(path):
-        print(f"[MODEL] File not found: {filename}")
         return None
-    try:
-        with open(path, "rb") as f:
-            return pickle.load(f)
-    except Exception as e:
-        if "No module named '_loss'" not in str(e):
-            print(f"[MODEL] Failed to load {filename}: {e}")
-        return None
+    with open(path, "rb") as f:
+        return pickle.load(f)
 
 try:
     risk_pkg = _load("risk_model.pkl")
@@ -228,7 +244,7 @@ def _predict_base_fraud_score(ff: dict) -> float:
     score = 0.12
     score += 0.20 if movement < 0.5 and hours > 3 else 0.0
     score += 0.18 if orders > 8 and hours > 6 else 0.0
-    score += min(max(0.0, 1.0 - float(movement) / float(50.0)), 0.15)
+    score += min(max(0.0, 1.0 - movement / 50.0), 0.15)
     return round(max(0.0, min(score, 1.0)), 2)
 
 # --- DB Fetch Helpers ---
@@ -236,12 +252,18 @@ def _predict_base_fraud_score(ff: dict) -> float:
 async def fetch_db_activity(worker_id: str) -> dict:
     conn = await get_db_conn()
     try:
+        worker = await conn.fetchrow("SELECT worker_id FROM workers WHERE worker_id=$1", req.worker_id)
+        if not worker:
+            raise HTTPException(status_code=404, detail="Worker not found")
+        worker = await conn.fetchrow("SELECT worker_id FROM workers WHERE worker_id=$1", req.worker_id)
+        if not worker:
+            raise HTTPException(status_code=404, detail="Worker not found")
+        worker = await conn.fetchrow("SELECT worker_id FROM workers WHERE worker_id=$1", req.worker_id)
+        if not worker:
+            raise HTTPException(status_code=404, detail="Worker not found")
         row = await conn.fetchrow("SELECT COALESCE(SUM(earnings), 0) as earnings, COUNT(*) as orders FROM orders WHERE worker_id = $1 AND timestamp::date = CURRENT_DATE", worker_id)
-        result = dict(row)
-        for k, v in result.items():
-            if isinstance(v, Decimal):
-                result[k] = float(v)
-        return result
+        row = normalize_row(row)
+        return dict(row)
     finally:
         await conn.close()
 
@@ -249,13 +271,8 @@ async def fetch_worker_profile(worker_id: str) -> dict | None:
     conn = await get_db_conn()
     try:
         row = await conn.fetchrow("SELECT * FROM workers WHERE worker_id = $1", worker_id)
-        if not row:
-            return None
-        result = dict(row)
-        for k, v in result.items():
-            if isinstance(v, type(Decimal())):
-                result[k] = float(v)
-        return result
+        row = normalize_row(row)
+        return dict(row) if row else None
     finally:
         await conn.close()
 
@@ -277,12 +294,9 @@ async def fetch_session_data(worker_id: str) -> dict:
                WHERE worker_id = $1 AND session_date = CURRENT_DATE""",
             worker_id
         )
+        row = normalize_row(row)
         if row:
-            result = dict(row)
-            for k, v in result.items():
-                if isinstance(v, Decimal):
-                    result[k] = float(v)
-            return result
+            return dict(row)
         return {"hours_online": 0.0, "movement_km": 0.0, "deliveries_done": 0, "lat_last": None, "lon_last": None, "zone_mismatch": False}
     finally:
         await conn.close()
@@ -324,6 +338,7 @@ def auto_trigger_loop():
     Runs every 60s. For each worker with an active policy today,
     fetches env data from hub, runs ML pipeline, writes payout if
     both gates pass and no payout has already fired today.
+    Also updates worker_latest_analysis with live metrics.
     """
     try:
         loop = asyncio.new_event_loop()
@@ -332,13 +347,19 @@ def auto_trigger_loop():
         async def _run():
             db = await get_db_conn()
             try:
-                rows = await db.fetch("SELECT worker_id, avg_earnings_12w, target_daily_hours, zone, avg_orders_7d, lat_last, lon_last FROM v_auto_trigger_candidates")
+                rows = await db.fetch("SELECT worker_id, avg_earnings_12w, target_daily_hours, zone, avg_orders_7d FROM v_auto_trigger_candidates")
+                
+                scenario_res = req_lib.get(f"{HUB_URL}/api/risk-data?worker_id=W001", timeout=3)
+                active_scenario = "normal"
+                if scenario_res.ok:
+                    active_scenario = scenario_res.json().get("scenario", "normal")
             finally:
                 await db.close()
 
             today = dt.date.today().isoformat()
             for worker in rows:
                 worker_id = worker["worker_id"]
+                
                 check = req_lib.get(
                     f"{HUB_URL}/api/payout-exists/{worker_id}/{today}",
                     timeout=3
@@ -346,10 +367,31 @@ def auto_trigger_loop():
                 if check.ok and check.json().get("exists"):
                     continue
 
-                lat = float(worker.get("lat_last") or 13.0827)
-                lon = float(worker.get("lon_last") or 80.2707)
+                lat = worker.get("lat_last") or 13.0827
+                lon = worker.get("lon_last") or 80.2707
                 try:
                     result = await run_analysis_internal(worker_id, float(lat), float(lon))
+                    
+                    analytics = result.get("analytics", {})
+                    risk = analytics.get("risk", {})
+                    income = analytics.get("income", {})
+                    fraud = analytics.get("fraud", {})
+                    
+                    db = await get_db_conn()
+                    try:
+                        await db.execute("""
+                            INSERT INTO worker_latest_analysis (worker_id, live_risk_score, live_income_drop_pct, live_fraud_score, active_scenario, last_calculated_at)
+                            VALUES ($1, $2, $3, $4, $5, NOW())
+                            ON CONFLICT (worker_id) DO UPDATE SET
+                                live_risk_score = EXCLUDED.live_risk_score,
+                                live_income_drop_pct = EXCLUDED.live_income_drop_pct,
+                                live_fraud_score = EXCLUDED.live_fraud_score,
+                                active_scenario = EXCLUDED.active_scenario,
+                                last_calculated_at = EXCLUDED.last_calculated_at
+                        """, worker_id, risk.get("score", 0), income.get("drop", 0), fraud.get("score", 0), active_scenario)
+                    finally:
+                        await db.close()
+                    
                     if result.get("status") == "APPROVED":
                         print(f"[AUTO] Payout approved for {worker_id}: ₹{result['payout']['amount']}")
                 except Exception as exc:
@@ -376,19 +418,15 @@ async def startup_event():
 async def shutdown_event():
     scheduler.shutdown()
 
-
-def _detect_zone_from_coords(lat: float, lon: float) -> str | None:
-    """Detect zone from GPS coordinates using zone boundaries"""
-    zone_boundaries = {
-        "Chennai-Central": {"lat_min": 13.05, "lat_max": 13.10, "lon_min": 80.25, "lon_max": 80.30},
-        "Chennai-North": {"lat_min": 13.10, "lat_max": 13.15, "lon_min": 80.28, "lon_max": 80.32},
-        "Chennai-South": {"lat_min": 13.00, "lat_max": 13.05, "lon_min": 80.22, "lon_max": 80.27},
-        "Chennai-East": {"lat_min": 13.05, "lat_max": 13.10, "lon_min": 80.22, "lon_max": 80.27},
-    }
-    for zone, bounds in zone_boundaries.items():
-        if bounds["lat_min"] <= lat <= bounds["lat_max"] and bounds["lon_min"] <= lon <= bounds["lon_max"]:
-            return zone
-    return None
+@app.get("/test-db")
+async def test_db():
+    try:
+        conn = await get_db_conn()
+        val = await conn.fetchval("SELECT 1")
+        await conn.close()
+        return {"db": val}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def _score_to_level(score: float) -> str:
@@ -437,6 +475,9 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
         raise HTTPException(status_code=404, detail="Worker not found")
 
     hub_data = hub_res.json()
+    print(f"[ANALYZE] Scenario from hub: {hub_data.get('scenario')}")
+    print(f"[ANALYZE] Hub data keys: {list(hub_data.keys())}")
+    scenario_triggered = hub_data.get("scenario", "normal")
     h = session["hours_online"]
     m_km = session["movement_km"]
     d = int(db_activity["orders"])
@@ -476,7 +517,7 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
         "earnings_drop_pct": 20.0,
         "active_hours": h,
         "deliveries_completed": d,
-        "avg_deliveries": float(worker["avg_orders_7d"]) / float(8.0),
+        "avg_deliveries": float(worker["avg_orders_7d"]) / 8.0,
         "movement_distance_km": m_km,
         "order_drop_pct": 20.0,
         "orders_last_hour": d
@@ -492,7 +533,7 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
         "movement_km": m_km,
         "claim_velocity": claim_velocity,
         "rain_1h": w["rain_1h"],
-        "gps_consistency_score": max(0.0, min(1.0, 1.0 - min(float(m_km) / 50.0, 1.0))),
+        "gps_consistency_score": max(0.0, min(1.0, 1.0 - min(m_km / 50.0, 1.0))),
         "order_history_presence": order_history_presence,
         "zone_mismatch": session.get("zone_mismatch", False)
     })
@@ -501,13 +542,26 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
     fl = enhanced_fraud["fraud_level"]
 
     # 4. Decision
-    avg_earnings = float(worker["avg_earnings_12w"])
-    target_hours = float(worker["target_daily_hours"])
-    rate = avg_earnings / target_hours
-    lost = max(0.0, target_hours - h)
+    rate = float(worker["avg_earnings_12w"]) / float(worker["target_daily_hours"])
+    lost = max(0.0, float(worker["target_daily_hours"]) - h)
 
     min_payout_pct = 0.05
     tp, tn, st = 0.0, "None", "DENIED"
+
+    # Parametric: no scenario -> no payout
+    if scenario_triggered == "normal":
+        return {
+            "status": "MONITORING",
+            "worker_id": worker_id,
+            "scenario": scenario_triggered,
+            "analytics": {
+                "risk": {"score": rs, "level": rl},
+                "fraud": {"score": fs, "level": fl},
+                "income": {"drop": idr, "severity": isev}
+            },
+            "payout": {"amount": 0, "trigger": "None"},
+            "message": "No active scenario triggers. Monitoring mode."
+        }
 
     if fl in ("HIGH", "CRITICAL") or fs > 0.65:
         st = "BANNED"
@@ -515,6 +569,8 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
         st = "HELD"
     else:
         cands = []
+        if scenario_triggered:
+            cands.append((0.80, scenario_triggered))
         if w["rain_1h"] > 45:
             cands.append((0.80, "Heavy Rainfall"))
         if aq["pm25"] > 120:
@@ -525,11 +581,8 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
         if cands:
             tp, tn = max(cands, key=lambda x: x[0])
             st = "APPROVED"
-        elif d > 0 and lost > 0:
-            tp, tn, st = 0.10, "Base Coverage", "APPROVED"
         else:
-            tp, tn, st = min_payout_pct, "Initial Income Protection", "APPROVED"
-            lost = target_hours
+            st = "DENIED"
 
     p_amt = round((rate * lost) * tp)
     if st == "APPROVED" and p_amt < 50:
@@ -542,12 +595,12 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
             """INSERT INTO payouts
                (worker_id, policy_id, amount, risk_score, risk_level, income_drop_pct, income_severity,
                 fraud_score, enhanced_fraud_score, fraud_level, fraud_rules_triggered,
-                payout_status, trigger_pct, hourly_rate, hours_lost, trigger_type, gps_lat, gps_lng)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+                payout_status, trigger_pct, hourly_rate, hours_lost, trigger_type, gps_lat, gps_lng, auto_triggered)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
                RETURNING payout_id""",
             worker_id, policy["policy_id"], float(p_amt), rs, rl, idr, isev,
             base_fs, fs, fl, json.dumps(enhanced_fraud["rules_triggered"]),
-            st, tp, float(rate), float(lost), tn, lat, lon
+            st, tp, float(rate), float(lost), tn, lat, lon, True
         )
 
         audit_details = {
@@ -585,6 +638,14 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
         event_type = f"PAYOUT_{st}"
         message = f"Payout decision: {st} - ₹{p_amt} for {tn}" if st == "APPROVED" else f"Payout {st}: {tn if tn != 'None' else fl}"
 
+        if st == "APPROVED" and tn != "None":
+            alert_severity = "critical" if tp >= 0.8 else "high" if tp >= 0.5 else "medium"
+        await conn.execute(
+            """INSERT INTO alerts (worker_id, type, severity, metric_value, threshold_value, claimed, expires_at, status)
+               VALUES ($1, $2, $3, $4, $5, TRUE, NOW() + INTERVAL '3 minutes', 'ACTIVE')""",
+            worker_id, tn, alert_severity, float(p_amt), tp
+        )
+
         await conn.execute(
             """INSERT INTO audit_log (event_type, entity_type, entity_id, worker_id, action_by, severity, message, details)
                VALUES ($1, 'PAYOUT', $2, $3, 'SYSTEM', $4, $5, $6)""",
@@ -593,13 +654,14 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
     finally:
         await conn.close()
 
-    base = (avg_earnings * 6) * 0.0075
+    base = (float(worker["avg_earnings_12w"]) * 6) * 0.0075
     r_mult = 1.0 + 0.4 * min(rs / 8.0, 1.0)
     zf = 1.10 if "Central" in (worker.get("zone") or "") else 1.05
     prem = round(max(15, min(100, base * r_mult * loyalty * zf)))
     return {
         "status": st,
         "worker_id": worker_id,
+        "scenario": scenario_triggered,
         "analytics": {
             "risk": {"score": rs, "level": rl},
             "fraud": {"score": fs, "level": fl, "rules": enhanced_fraud["rules_triggered"]},
@@ -612,7 +674,24 @@ async def run_analysis_internal(worker_id: str, lat: float, lon: float) -> dict:
 
 @app.post("/api/v1/analyze")
 async def analyze(req: AnalyzeRequest):
-    return await run_analysis_internal(req.worker_id, req.lat, req.lon)
+    result = await run_analysis_internal(req.worker_id, req.lat, req.lon)
+    if result.get("status") == "APPROVED":
+        conn = await get_db_conn()
+        try:
+            payout_id = result.get("payout", {}).get("payout_id")
+            if payout_id:
+                worker = await conn.fetchrow("SELECT upi_id FROM workers WHERE worker_id=$1", req.worker_id)
+                upi = worker["upi_id"] if worker else None
+                if upi:
+                    await fire_razorpay_payout(PayoutRequest(
+                        payout_id=payout_id,
+                        worker_id=req.worker_id,
+                        amount=result.get("payout", {}).get("amount", 0),
+                        upi_id=upi
+                    ))
+        finally:
+            await conn.close()
+    return result
 
 
 @app.post("/api/v1/submit-claim")
@@ -690,6 +769,16 @@ async def _write_payment_record(request: PayoutRequest, ref: str | None, status:
                 "UPDATE payouts SET payout_status='PAID', resolved_at=NOW() WHERE payout_id=$1",
                 request.payout_id
             )
+
+            await conn.execute(
+                """INSERT INTO payment_trigger_notifications (worker_id, title, body, amount, upi_id, delivery_status)
+                   VALUES ($1, $2, $3, $4, $5, 'SENT')""",
+                request.worker_id,
+                "🌧️ Heavy Rainfall Detected! Parametric Claim Approved.",
+                f"💰 ₹{request.amount} credited to {request.upi_id}. Ref: {ref or 'auto'}",
+                request.amount,
+                request.upi_id
+            )
     finally:
         await conn.close()
 
@@ -705,6 +794,7 @@ async def get_worker_by_phone(phone: str):
                       w.avg_earnings_12w, w.target_daily_hours, w.phone, w.upi_id,
                       EXISTS(SELECT 1 FROM policies p WHERE p.worker_id = w.worker_id AND p.status = 'ACTIVE' AND p.coverage_end > NOW()) as has_active_policy
                FROM workers w WHERE w.phone = $1""", phone)
+        row = normalize_row(row)
         if not row:
             raise HTTPException(status_code=404, detail="Worker not found")
         return dict(row)
@@ -731,7 +821,12 @@ async def register_worker(req: RegisterRequest):
 async def complete_kyc(req: KycRequest):
     conn = await get_db_conn()
     try:
-        await conn.execute("UPDATE workers SET kyc_status='VERIFIED' WHERE worker_id=$1", req.worker_id)
+        import hashlib
+        aadhaar_hash = hashlib.sha256(req.aadhaar_number.encode()).hexdigest()
+        await conn.execute(
+            "UPDATE workers SET kyc_status='VERIFIED', aadhaar_hash=$1, registration_step='DONE' WHERE worker_id=$2",
+            aadhaar_hash, req.worker_id
+        )
         return await fetch_worker_profile(req.worker_id)
     finally:
         await conn.close()
@@ -739,87 +834,132 @@ async def complete_kyc(req: KycRequest):
 # --- v6.0 AUTH & REGISTRATION FLOW ---
 
 class LoginRequest(BaseModel):
-    worker_id: str
+    worker_id: str | None = None
     phone: str
 
 class VerifyOtpRequest(BaseModel):
     worker_id: str
+    session_token: str
     otp_code: str
-    session_id: Optional[str] = None
 
 class ProfileRegisterRequest(BaseModel):
     worker_id: str
     name: str
     platform: str
+    upi_id: str
 
 class IncomeRegisterRequest(BaseModel):
     worker_id: str
     avg_earnings_12w: float
     target_daily_hours: float
+    upi_id: str
 
 class LocationRegisterRequest(BaseModel):
     worker_id: str
-    city: str
+    city: str | None = None
     zone: str
     lat: float
     lon: float
 
 class SessionPingRequest(BaseModel):
     worker_id: str
-    session_id: str
     lat: float
     lon: float
     hours_online: Optional[float] = None
     movement_km: Optional[float] = None
+    movement_km_delta: Optional[float] = None
+    deliveries_done_delta: Optional[int] = None
 
+
+import re
 
 @app.post("/api/v1/login")
 async def login(req: LoginRequest):
-    """v6.0: Login with worker_id + phone, returns OTP. Creates new worker if not found."""
     conn = await get_db_conn()
     try:
-        worker = await conn.fetchrow(
-            "SELECT worker_id, registration_step, phone FROM workers WHERE worker_id = $1",
-            req.worker_id
-        )
+        print("\n🔍 LOGIN DEBUG START ------------------")
 
-        if not worker:
-            worker_id = req.worker_id
-            await conn.execute(
-                "INSERT INTO workers (worker_id, name, phone) VALUES ($1, $2, $3)",
-                worker_id, f"Worker {worker_id}", req.phone
-            )
+        print("👉 Raw INPUT worker_id:", req.worker_id)
+        print("👉 Raw INPUT phone:", req.phone)
+
+        phone = re.sub(r"\D", "", str(req.phone))[-10:]
+        print("👉 CLEANED INPUT phone:", phone)
+
+        if req.worker_id:
             worker = await conn.fetchrow(
-                "SELECT worker_id, registration_step FROM workers WHERE worker_id = $1",
-                worker_id
+                "SELECT worker_id, phone, registration_step FROM workers WHERE LOWER(worker_id)=LOWER($1)",
+                req.worker_id
             )
         else:
-            if worker["phone"] != req.phone:
-                await conn.execute(
-                    "UPDATE workers SET phone = $1 WHERE worker_id = $2",
-                    req.phone, req.worker_id
-                )
+            worker = await conn.fetchrow(
+                "SELECT worker_id, phone, registration_step FROM workers WHERE phone = $1",
+                phone
+            )
+
+        print("👉 DB FETCH RESULT:", worker)
+
+        if not worker:
+            print("ℹ️ Worker not found. Creating draft profile.")
+            worker_id = f"W{int(datetime.now().timestamp()) % 10000:03d}"
+            await conn.execute(
+                """INSERT INTO workers (worker_id, phone, name, platform, zone, city, upi_id, kyc_status, registration_step,
+                                        avg_earnings_12w, target_daily_hours)
+                   VALUES ($1, $2, 'New Worker', 'ZOMATO', 'Chennai-Central', 'Chennai', '', 'PENDING', 'PHONE', 1800, 8.0)""",
+                worker_id, phone
+            )
+            worker = {"worker_id": worker_id, "phone": phone, "registration_step": "PHONE"}
+
+        db_phone_raw = str(worker["phone"])
+        db_phone = re.sub(r"\D", "", db_phone_raw)[-10:]
+
+        print("👉 DB RAW phone:", db_phone_raw)
+        print("👉 DB CLEANED phone:", db_phone)
+
+        print("👉 COMPARISON → INPUT vs DB:", phone, "vs", db_phone)
+
+        if req.worker_id and db_phone != phone:
+            print("❌ PHONE MISMATCH ERROR")
+            raise HTTPException(status_code=404, detail="Phone mismatch")
+
+        print("✅ LOGIN SUCCESS — generating OTP")
+
+        otp_code = str(int(datetime.now().timestamp()) % 1000000).zfill(6)
 
         import uuid
-        
-        otp_code = str(int(datetime.now().timestamp()) % 100000)
-        otp_code = otp_code[-6:].zfill(6)
         session_token = str(uuid.uuid4())
 
+        is_new = worker.get("registration_step") != "DONE"
+        if is_new:
+            await conn.execute(
+                "UPDATE workers SET registration_step='OTP' WHERE worker_id=$1",
+                worker["worker_id"]
+            )
         await conn.execute(
-            """INSERT INTO auth_sessions (session_token, worker_id, phone, is_new_registration)
-               VALUES ($1, $2, $3, $4)""",
-            session_token, req.worker_id, req.phone, worker["registration_step"] == "PHONE"
+            """INSERT INTO auth_sessions (session_token, worker_id, phone, is_new_registration, resumed_step, is_valid, expires_at)
+               VALUES ($1, $2, $3, $4, $5, true, NOW() + INTERVAL '30 days')""",
+            session_token, worker["worker_id"], phone, is_new, worker.get("registration_step") or "PHONE"
         )
 
+        await conn.execute(
+            """INSERT INTO otps (phone, otp, expires_at, used)
+               VALUES ($1, $2, NOW() + INTERVAL '5 minutes', false)""",
+            phone, otp_code
+        )
+
+        print("✅ OTP GENERATED:", otp_code)
+        print("🔍 LOGIN DEBUG END ------------------\n")
+
+        reg_step = worker.get("registration_step", "PHONE")
+
         return {
-            "status": "OTP_SENT",
-            "session_id": session_token,
-            "message": f"OTP sent to {req.phone[-4:]}",
-            "demo_otp": otp_code,
-            "is_new_registration": worker["registration_step"] == "PHONE",
-            "registration_step": worker["registration_step"]
+            "session_token": session_token,
+            "worker_id": worker["worker_id"],
+            "is_new_registration": reg_step != "DONE",
+            "resumed_step": reg_step,
+            "expires_at": (datetime.now() + timedelta(days=30)).isoformat(),
+            "demo_otp": otp_code
         }
+
     finally:
         await conn.close()
 
@@ -829,32 +969,37 @@ async def verify_otp(req: VerifyOtpRequest):
     """v6.0: Verify OTP and create active session"""
     conn = await get_db_conn()
     try:
-        session_id = req.session_id or f"session_{req.worker_id}"
-        
-        latest_session = await conn.fetchrow(
-            """SELECT session_token FROM auth_sessions 
-               WHERE worker_id = $1 
+        session = await conn.fetchrow(
+            "SELECT session_token, resumed_step, is_valid FROM auth_sessions WHERE worker_id = $1 AND session_token = $2",
+            req.worker_id, req.session_token
+        )
+        if not session or not session["is_valid"]:
+            raise HTTPException(status_code=404, detail="Invalid session")
+
+        otp_row = await conn.fetchrow(
+            """SELECT id, otp FROM otps 
+               WHERE phone = (SELECT phone FROM workers WHERE worker_id=$1)
+               AND used = false AND expires_at > NOW()
                ORDER BY created_at DESC LIMIT 1""",
             req.worker_id
         )
-        
-        if not latest_session and not req.session_id:
-            pass
+        if not otp_row or otp_row["otp"] != req.otp_code:
+            raise HTTPException(status_code=401, detail="Invalid OTP")
 
-        worker = await conn.fetchrow(
-            "SELECT worker_id, name, phone, platform, zone, city, kyc_status, registration_step, avg_earnings_12w, target_daily_hours, upi_id FROM workers WHERE worker_id = $1",
-            req.worker_id
+        await conn.execute("UPDATE otps SET used = true WHERE id = $1", otp_row["id"])
+        await conn.execute(
+            "UPDATE auth_sessions SET is_valid = true, last_used_at = NOW() WHERE session_token = $1",
+            req.session_token
         )
 
-        if not worker:
-            raise HTTPException(status_code=404, detail="Worker not found")
+        worker = await conn.fetchrow("SELECT * FROM workers WHERE worker_id = $1", req.worker_id)
 
         return {
             "status": "AUTHENTICATED",
-            "session_id": session_id,
+            "session_token": req.session_token,
             "worker": dict(worker),
             "registration_step": worker.get("registration_step", "PHONE"),
-            "has_active_policy": False
+            "resumed_step": worker.get("registration_step", "PHONE")
         }
     finally:
         await conn.close()
@@ -869,15 +1014,16 @@ async def register_profile(req: ProfileRegisterRequest):
         platform = "ZOMATO" if platform == "ZOMATO" else "SWIGGY" if platform == "SWIGGY" else "BLINKIT" if platform == "BLINKIT" else "AMAZON" if platform == "AMAZON" else "BOTH"
 
         await conn.execute(
-            """UPDATE workers SET name = $1, platform = $2, registration_step = 'PROFILE'
-               WHERE worker_id = $3""",
-            req.name, platform, req.worker_id
+            """UPDATE workers SET name = $1, platform = $2, upi_id = $3, registration_step = 'INCOME'
+               WHERE worker_id = $4""",
+            req.name, platform, req.upi_id, req.worker_id
         )
 
         return {
             "status": "PROFILE_COMPLETE",
             "worker_id": req.worker_id,
-            "next_step": "INCOME"
+            "next_step": "INCOME",
+            "registration_step": "INCOME"
         }
     finally:
         await conn.close()
@@ -889,15 +1035,16 @@ async def register_income(req: IncomeRegisterRequest):
     conn = await get_db_conn()
     try:
         await conn.execute(
-            """UPDATE workers SET avg_earnings_12w = $1, target_daily_hours = $2, registration_step = 'INCOME'
-               WHERE worker_id = $3""",
-            req.avg_earnings_12w, req.target_daily_hours, req.worker_id
+            """UPDATE workers SET avg_earnings_12w = $1, target_daily_hours = $2, upi_id = $3, registration_step = 'LOCATION'
+               WHERE worker_id = $4""",
+            req.avg_earnings_12w, req.target_daily_hours, req.upi_id, req.worker_id
         )
 
         return {
             "status": "INCOME_COMPLETE",
             "worker_id": req.worker_id,
-            "next_step": "LOCATION"
+            "next_step": "LOCATION",
+            "registration_step": "LOCATION"
         }
     finally:
         await conn.close()
@@ -908,26 +1055,35 @@ async def register_location(req: LocationRegisterRequest):
     """v6.0: Registration step - location"""
     conn = await get_db_conn()
     try:
-        worker = await conn.fetchrow("SELECT zone FROM workers WHERE worker_id = $1", req.worker_id)
+        worker = await conn.fetchrow("SELECT zone, lat, lon FROM workers WHERE worker_id = $1", req.worker_id)
         old_zone = worker.get("zone") if worker else None
+        old_lat = worker.get("lat") if worker else None
+        old_lon = worker.get("lon") if worker else None
+
+        if not req.city:
+            city = "Chennai"
+        else:
+            city = req.city
 
         await conn.execute(
-            """UPDATE workers SET city = $1, zone = $2, lat = $3, lon = $4, registration_step = 'LOCATION'
+            """UPDATE workers SET city = $1, zone = $2, lat = $3, lon = $4, registration_step = 'DONE'
                WHERE worker_id = $5""",
-            req.city, req.zone, req.lat, req.lon, req.worker_id
+            city, req.zone, req.lat, req.lon, req.worker_id
         )
 
         if old_zone and old_zone != req.zone:
             await conn.execute(
-                """INSERT INTO zone_location_log (worker_id, old_zone, new_zone, lat, lon)
-                   VALUES ($1, $2, $3, $4, $5)""",
-                req.worker_id, old_zone, req.zone, req.lat, req.lon
+                """INSERT INTO zone_location_log (worker_id, from_zone, to_zone, from_lat, from_lon, to_lat, to_lon)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+                req.worker_id, old_zone, req.zone, old_lat, old_lon, req.lat, req.lon
             )
 
         return {
-            "status": "LOCATION_COMPLETE",
+            "status": "LOCATION_LOCKED",
             "worker_id": req.worker_id,
-            "next_step": "DONE"
+            "locked_zone": req.zone,
+            "next_step": "DONE",
+            "registration_step": "DONE"
         }
     finally:
         await conn.close()
@@ -935,86 +1091,45 @@ async def register_location(req: LocationRegisterRequest):
 
 @app.post("/api/v1/session-ping")
 async def session_ping(req: SessionPingRequest):
-    """v6.0: Session ping with Order-Based Zone Validation
-    
-    Logic:
-    - Home zone (registered) works without orders
-    - New zone needs ≥1 order to be valid for payout
-    - Movement without orders = non-operational travel
-    """
+    """v6.0: Session ping with zone promotion logic"""
     conn = await get_db_conn()
     try:
         await conn.execute(
-            """UPDATE worker_sessions SET lat_last = $1, lon_last = $2,
-               hours_online = COALESCE($3, hours_online), movement_km = COALESCE($4, movement_km)
-               WHERE worker_id = $5 AND session_date = CURRENT_DATE""",
-            req.lat, req.lon, req.hours_online, req.movement_km, req.worker_id
+            """INSERT INTO worker_sessions (worker_id, session_date, lat_last, lon_last, hours_online, movement_km)
+               VALUES ($1, CURRENT_DATE, $2, $3, COALESCE($4, 0), COALESCE($5, 0))
+               ON CONFLICT (worker_id, session_date)
+               DO UPDATE SET lat_last = EXCLUDED.lat_last,
+                             lon_last = EXCLUDED.lon_last,
+                             hours_online = COALESCE(EXCLUDED.hours_online, worker_sessions.hours_online),
+                             movement_km = COALESCE(EXCLUDED.movement_km, worker_sessions.movement_km)""",
+            req.worker_id, req.lat, req.lon, req.hours_online, req.movement_km
         )
 
         worker = await conn.fetchrow("SELECT * FROM workers WHERE worker_id = $1", req.worker_id)
-        home_zone = worker.get("zone")
 
-        detected_zone = _detect_zone_from_coords(req.lat, req.lon)
-        
-        zone_changed = detected_zone and detected_zone != home_zone
-        valid_for_payout = True
-        order_count = 0
-
-        if zone_changed and detected_zone:
-            order_count = await conn.fetchval(
-                """SELECT COUNT(*) FROM orders 
-                   WHERE worker_id = $1 AND zone = $2 AND timestamp::date = CURRENT_DATE""",
-                req.worker_id, detected_zone
-            )
-            has_orders_in_zone = order_count > 0
-            
-            if has_orders_in_zone:
-                valid_for_payout = True
-                await conn.execute(
-                    """INSERT INTO worker_zone_orders (worker_id, zone, order_count, last_order_at)
-                       VALUES ($1, $2, $3, NOW())
-                       ON CONFLICT (worker_id, zone) 
-                       DO UPDATE SET order_count = worker_zone_orders.order_count + 1, last_order_at = NOW()""",
-                    req.worker_id, detected_zone, order_count
-                )
-            else:
-                valid_for_payout = False
-
+        zone = worker.get("zone")
         target_zone = None
         promotion_available = False
         promotion_reason = None
 
-        if home_zone:
-            next_zone = await conn.fetchrow(
-                """SELECT nz.zone_name, nz.promotion_threshold_type, nz.promotion_threshold_value
-                   FROM zone_neighbours nn
-                   JOIN zones nz ON nz.zone_name = nn.neighbour_zone
-                   WHERE nn.zone_name = $1 AND nz.promotion_threshold_value IS NOT NULL
-                   ORDER BY nz.promotion_threshold_value DESC LIMIT 1""",
-                home_zone
+        if zone:
+            eligible = await conn.fetchrow(
+                """SELECT current_session_zone, zone_distance_km
+                   FROM v_zone_promotion_eligibility
+                   WHERE worker_id = $1
+                   ORDER BY zone_distance_km ASC LIMIT 1""",
+                req.worker_id
             )
 
-            if next_zone:
-                eligible = await conn.fetchrow(
-                    """SELECT * FROM v_zone_promotion_eligibility
-                       WHERE worker_id = $1 AND eligible_zone = $2""",
-                    req.worker_id, next_zone["zone_name"]
-                )
-
-                if eligible:
-                    target_zone = next_zone["zone_name"]
-                    promotion_available = True
-                    promotion_reason = f"Met {next_zone['promotion_threshold_type']} threshold for {next_zone['zone_name']}"
+            if eligible:
+                target_zone = eligible["current_session_zone"]
+                promotion_available = True
+                promotion_reason = f"Neighbor zone within {eligible['zone_distance_km']} km"
 
         return {
             "status": "PING_OK",
             "worker_id": req.worker_id,
-            "zone": home_zone,
-            "detected_zone": detected_zone,
-            "zone_changed": zone_changed,
-            "valid_for_payout": valid_for_payout,
-            "order_count": order_count,
-            "message": "Home zone active for payout" if not zone_changed else ("Has orders - zone valid" if valid_for_payout else "Needs order in new zone"),
+            "zone": zone,
             "promotion": {
                 "available": promotion_available,
                 "eligible_zone": target_zone,
@@ -1025,28 +1140,141 @@ async def session_ping(req: SessionPingRequest):
         await conn.close()
 
 
+class DetectZoneRequest(BaseModel):
+    worker_id: str
+    lat: float
+    lon: float
+
+
+@app.post("/api/v1/detect-zone")
+async def detect_zone(req: DetectZoneRequest):
+    """Registration Step 3: Detect zone based on GPS coordinates"""
+    lat = req.lat
+    lon = req.lon
+
+    zone = "Chennai-Central"
+    if lat < 13.0:
+        zone = "Chennai-South"
+    elif lon > 80.3:
+        zone = "Chennai-East"
+    elif lat > 13.1 and lon < 80.25:
+        zone = "Chennai-North"
+
+    import math
+    zone_centers = {
+        "Chennai-Central": (13.0827, 80.2707),
+        "Chennai-South": (12.9250, 80.2500),
+        "Chennai-East": (13.1100, 80.3200),
+        "Chennai-North": (13.1500, 80.2500),
+    }
+    center = zone_centers.get(zone, (13.0827, 80.2707))
+    distance = math.sqrt((lat - center[0])**2 + (lon - center[1])**2) * 111
+
+    return {
+        "zone": zone,
+        "distance_to_center_km": round(distance, 2),
+        "status": "LOCKED" if distance < 10 else "PENDING"
+    }
+
+
 @app.get("/api/v1/home")
 async def get_home(worker_id: str):
     """v6.0: Home endpoint"""
     conn = await get_db_conn()
     try:
-        row = await conn.fetchrow(
-            "SELECT * FROM v_worker_home WHERE worker_id = $1",
+        worker = await conn.fetchrow(
+            "SELECT worker_id, name, zone, city, platform, registration_step FROM workers WHERE worker_id = $1",
+            worker_id
+        )
+        if not worker:
+            raise HTTPException(status_code=404, detail="Worker not found")
+
+        policy = await conn.fetchrow(
+            """SELECT plan_name, payout_cap, coverage_end
+               FROM policies WHERE worker_id=$1 AND status='ACTIVE'
+               ORDER BY coverage_end DESC LIMIT 1""",
             worker_id
         )
 
-        if not row:
-            worker = await conn.fetchrow("SELECT * FROM workers WHERE worker_id = $1", worker_id)
-            if not worker:
-                raise HTTPException(status_code=404, detail="Worker not found")
-            return {
-                "worker_id": worker_id,
-                "registration_step": worker.get("registration_step", "PHONE"),
-                "has_active_policy": False,
-                "next_action": "COMPLETE_REGISTRATION"
-            }
+        latest_payout = await conn.fetchrow(
+            """SELECT trigger_type, payout_status, triggered_at, risk_score, risk_level,
+                      income_drop_pct, income_severity
+               FROM payouts WHERE worker_id=$1 ORDER BY triggered_at DESC LIMIT 1""",
+            worker_id
+        )
 
-        return dict(row)
+        session = await conn.fetchrow(
+            """SELECT hours_online, movement_km
+               FROM worker_sessions WHERE worker_id=$1 AND session_date=CURRENT_DATE""",
+            worker_id
+        )
+
+        return {
+            "worker_id": worker["worker_id"],
+            "name": worker["name"],
+            "zone": worker["zone"],
+            "platform": worker["platform"],
+            "plan_name": policy["plan_name"] if policy else "",
+            "payout_cap": float(policy["payout_cap"]) if policy else 0.0,
+            "coverage_end": str(policy["coverage_end"]) if policy else "",
+            "risk_score": float(latest_payout["risk_score"]) if latest_payout else 0.0,
+            "risk_level": latest_payout["risk_level"] if latest_payout else "LOW",
+            "income_drop_pct": float(latest_payout["income_drop_pct"]) if latest_payout else 0.0,
+            "income_severity": latest_payout["income_severity"] if latest_payout else "NONE",
+            "last_trigger_type": latest_payout["trigger_type"] if latest_payout else "",
+            "hours_online": float(session["hours_online"]) if session else 0.0,
+            "earnings_today": 0.0,
+            "payout_triggered": False,
+            "analysis_payout_status": latest_payout["payout_status"] if latest_payout else "",
+            "last_analysis_at": str(latest_payout["triggered_at"]) if latest_payout else "",
+            "unread_notifications": 0
+        }
+    finally:
+        await conn.close()
+
+
+@app.get("/api/v1/notifications")
+async def get_notifications(worker_id: str):
+    conn = await get_db_conn()
+    try:
+        rows = await conn.fetch(
+            """SELECT notif_id, title, body, amount, upi_id, delivery_status, created_at
+               FROM payment_trigger_notifications
+               WHERE worker_id=$1
+               ORDER BY created_at DESC LIMIT 20""",
+            worker_id
+        )
+        return {
+            "notifications": [
+                {
+                    "notif_id": r["notif_id"],
+                    "notification_type": "PAYOUT",
+                    "title": r["title"],
+                    "body": r["body"],
+                    "amount": float(r["amount"]) if r["amount"] else None,
+                    "upi_id": r["upi_id"],
+                    "delivery_status": r["delivery_status"],
+                    "created_at": str(r["created_at"])
+                }
+                for r in rows
+            ]
+        }
+    finally:
+        await conn.close()
+
+
+@app.post("/api/v1/notifications/read")
+async def mark_notification_read(req: dict):
+    notif_id = req.get("notif_id")
+    if not notif_id:
+        raise HTTPException(status_code=400, detail="notif_id required")
+    conn = await get_db_conn()
+    try:
+        await conn.execute(
+            "UPDATE payment_trigger_notifications SET read_at=NOW(), delivery_status='SENT' WHERE id=$1",
+            int(notif_id)
+        )
+        return {"status": "OK"}
     finally:
         await conn.close()
 
@@ -1065,6 +1293,9 @@ async def subscribe(req: SubscribeRequest):
                RETURNING policy_id, coverage_start, coverage_end""",
             req.worker_id, req.plan_name, req.weekly_premium, req.payment_ref
         )
+        row = normalize_row(row)
+        await conn.execute("UPDATE workers SET subscribed = TRUE WHERE worker_id=$1", req.worker_id)
+
         return {
             "status": "ACTIVE",
             "policy_id": row["policy_id"],
@@ -1085,12 +1316,183 @@ async def get_active_policy(worker_id: str):
                FROM policies WHERE worker_id=$1 AND status='ACTIVE' AND coverage_end > NOW()
                ORDER BY coverage_end DESC LIMIT 1""", worker_id
         )
+        row = normalize_row(row)
         if not row:
             raise HTTPException(status_code=404, detail="No active policy")
         r = dict(row)
         r["coverage_start"] = r["coverage_start"].isoformat()
         r["coverage_end"] = r["coverage_end"].isoformat()
         return r
+    finally:
+        await conn.close()
+
+
+@app.get("/api/v1/alerts/{worker_id}")
+async def get_alerts_history(worker_id: str):
+    conn = await get_db_conn()
+    try:
+        rows = await conn.fetch(
+            """SELECT alert_id, type, severity, metric_value, threshold_value, claimed, 
+                      claimed_at, expires_at, status
+               FROM alerts WHERE worker_id=$1 ORDER BY claimed_at DESC LIMIT 20""",
+            worker_id
+        )
+        return [{
+            "alert_id": r["alert_id"],
+            "type": r["type"],
+            "severity": r["severity"],
+            "metric_value": float(r["metric_value"]) if r["metric_value"] else None,
+            "threshold_value": float(r["threshold_value"]) if r["threshold_value"] else None,
+            "claimed": r["claimed"],
+            "claimed_at": str(r["claimed_at"]),
+            "expires_at": str(r["expires_at"]),
+            "status": r["status"]
+        } for r in rows]
+    finally:
+        await conn.close()
+
+
+@app.get("/api/v1/live-metrics/{worker_id}")
+async def get_live_metrics(worker_id: str):
+    conn = await get_db_conn()
+    try:
+        worker = await conn.fetchrow("SELECT zone, target_daily_hours, avg_earnings_12w FROM workers WHERE worker_id=$1", worker_id)
+        if not worker:
+            raise HTTPException(status_code=404, detail="Worker not found")
+
+        analysis = await conn.fetchrow(
+            "SELECT live_risk_score, live_income_drop_pct, live_fraud_score, active_scenario, last_calculated_at FROM worker_latest_analysis WHERE worker_id=$1",
+            worker_id
+        )
+
+        active_alert = await conn.fetchrow(
+            """SELECT type, severity, expires_at, claimed_at FROM alerts 
+               WHERE worker_id=$1 AND status='ACTIVE' AND expires_at > NOW() 
+               ORDER BY claimed_at DESC LIMIT 1""",
+            worker_id
+        )
+
+        risk_score = float(analysis["live_risk_score"]) if analysis and analysis["live_risk_score"] else 0.0
+        active_scenario = analysis["active_scenario"] if analysis else "normal"
+        scenario_active = active_scenario != "normal"
+
+        risk_level = "LOW"
+        if risk_score >= 0.85: risk_level = "CRITICAL"
+        elif risk_score >= 0.70: risk_level = "HIGH"
+        elif risk_score >= 0.50: risk_level = "SUSPICIOUS"
+        elif risk_score >= 0.30: risk_level = "MODERATE"
+
+        if scenario_active and not active_alert:
+            alert_severity = "critical" if risk_score >= 0.85 else "high" if risk_score >= 0.7 else "medium"
+            await conn.execute(
+                """INSERT INTO alerts (worker_id, type, severity, metric_value, threshold_value, claimed, expires_at, status)
+                   VALUES ($1, $2, $3, $4, $5, TRUE, NOW() + INTERVAL '3 minutes', 'ACTIVE')""",
+                worker_id, active_scenario, alert_severity, risk_score * 10, 7.0
+            )
+
+            active_alert = await conn.fetchrow(
+                """SELECT type, severity, expires_at, claimed_at FROM alerts 
+                   WHERE worker_id=$1 AND status='ACTIVE' AND expires_at > NOW() 
+                   ORDER BY claimed_at DESC LIMIT 1""",
+                worker_id
+            )
+
+        return {
+            "worker_id": worker_id,
+            "risk_score": risk_score * 10,
+            "risk_level": risk_level,
+            "fraud_score": float(analysis["live_fraud_score"]) if analysis and analysis["live_fraud_score"] else 0.0,
+            "fraud_level": "LOW",
+            "income_drop": float(analysis["live_income_drop_pct"]) if analysis and analysis["live_income_drop_pct"] else 0.0,
+            "income_severity": "NONE",
+            "active_scenario": active_scenario,
+            "scenario_active": scenario_active,
+            "active_alert": {
+                "type": active_alert["type"],
+                "severity": active_alert["severity"],
+                "claimed": True,
+                "claimed_at": str(active_alert.get("claimed_at", "")),
+                "expires_at": str(active_alert["expires_at"])
+            } if active_alert else None,
+            "updated_at": datetime.utcnow().isoformat() + "Z"
+        }
+    finally:
+        await conn.close()
+
+
+@app.get("/api/v1/pricing-tiers")
+async def get_pricing_tiers(worker_id: str = None):
+    conn = await get_db_conn()
+    try:
+        if worker_id:
+            worker = await conn.fetchrow("SELECT avg_earnings_12w, target_daily_hours FROM workers WHERE worker_id=$1", worker_id)
+            if not worker:
+                raise HTTPException(status_code=404, detail="Worker not found")
+            avg_earnings = float(worker["avg_earnings_12w"])
+            target_hours = float(worker["target_daily_hours"])
+        else:
+            avg_earnings = 1800.0
+            target_hours = 8.0
+
+        tiers = [
+            {"name": "BASIC", "premium": 18, "cap": 400, "rec": avg_earnings < 1600},
+            {"name": "STANDARD", "premium": 34, "cap": 480, "rec": 1600 <= avg_earnings < 2200},
+            {"name": "PREMIUM", "premium": 49, "cap": 800, "rec": avg_earnings >= 2200}
+        ]
+
+        return {
+            "worker_id": worker_id,
+            "avg_earnings_12w": avg_earnings,
+            "tiers": tiers
+        }
+    finally:
+        await conn.close()
+
+
+@app.get("/api/v1/current-alerts")
+async def get_current_alerts(worker_id: str = None):
+    conn = await get_db_conn()
+    try:
+        if worker_id:
+            rows = await conn.fetch(
+                """SELECT trigger_type, zone, severity, payout_pct, status, raw_metric, detected_at
+                   FROM disruption_alerts 
+                   WHERE status='ACTIVE' AND zone = (SELECT zone FROM workers WHERE worker_id=$1)
+                   ORDER BY detected_at DESC""", worker_id
+            )
+        else:
+            rows = await conn.fetch(
+                """SELECT trigger_type, zone, severity, payout_pct, status, raw_metric, detected_at
+                   FROM disruption_alerts WHERE status='ACTIVE' ORDER BY detected_at DESC"""
+            )
+        return [{"trigger_type": r["trigger_type"], "zone": r["zone"], "severity": r["severity"],
+                 "payout_pct": r["payout_pct"], "status": r["status"], "detected_at": str(r["detected_at"])}
+                for r in rows]
+    finally:
+        await conn.close()
+
+
+@app.get("/api/v1/coverage")
+async def get_coverage(worker_id: str):
+    conn = await get_db_conn()
+    try:
+        row = await conn.fetchrow(
+            """SELECT policy_id, plan_name, weekly_premium, status, coverage_start, coverage_end, auto_renew
+               FROM policies WHERE worker_id=$1 AND status='ACTIVE' AND coverage_end > NOW()
+               ORDER BY coverage_end DESC LIMIT 1""", worker_id
+        )
+        if not row:
+            return {"active": False, "message": "No active policy"}
+        return {
+            "active": True,
+            "policy_id": row["policy_id"],
+            "plan_name": row["plan_name"],
+            "weekly_premium": float(row["weekly_premium"]),
+            "status": row["status"],
+            "coverage_start": row["coverage_start"].isoformat(),
+            "coverage_end": row["coverage_end"].isoformat(),
+            "auto_renew": row["auto_renew"]
+        }
     finally:
         await conn.close()
 
@@ -1117,7 +1519,7 @@ async def get_admin_stats():
                  WHERE payout_status='HELD' AND DATE(triggered_at)=CURRENT_DATE) as held_count,
                 (SELECT COUNT(*) FROM disruption_alerts WHERE status='ACTIVE') as active_alerts"""
         )
-
+        row = normalize_row(row)
         fraud_rows = await conn.fetch(
             """SELECT p.worker_id, w.name, p.fraud_score, p.fraud_level,
                       p.trigger_type, p.amount, p.payout_status, p.triggered_at
@@ -1128,7 +1530,7 @@ async def get_admin_stats():
 
         payout_rows = await conn.fetch(
             """SELECT p.payout_id, p.worker_id, w.name, p.trigger_type,
-                      p.amount, p.payout_status, p.triggered_at, p.fraud_score
+                      p.amount, p.payout_status, p.triggered_at, p.fraud_score, p.auto_triggered
                FROM payouts p JOIN workers w ON w.worker_id=p.worker_id
                ORDER BY p.triggered_at DESC LIMIT 50"""
         )
@@ -1171,7 +1573,8 @@ async def get_admin_stats():
                     "amount": float(r["amount"]),
                     "status": r["payout_status"],
                     "triggered_at": str(r["triggered_at"]),
-                    "fraud_score": float(r["fraud_score"] or 0)
+                    "fraud_score": float(r["fraud_score"] or 0),
+                    "auto_triggered": r["auto_triggered"]
                 }
                 for r in payout_rows
             ],
@@ -1244,7 +1647,8 @@ async def get_worker_payouts(worker_id: str):
     try:
         payouts = await conn.fetch(
             """SELECT payout_id, amount, trigger_type, trigger_pct, hourly_rate, hours_lost,
-                      risk_level, income_severity, fraud_level, fraud_score, payout_status, triggered_at
+                      risk_level, income_severity, fraud_level, fraud_score, payout_status,
+                      triggered_at, auto_triggered
                FROM payouts WHERE worker_id=$1 ORDER BY triggered_at DESC""",
             worker_id
         )

@@ -1,4 +1,4 @@
-// lib/screens/login_screen.dart
+// lib/screens/register_start_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,23 +9,21 @@ import '../services/auth_provider.dart';
 import '../utils/constants.dart';
 import '../widgets/shared_widgets.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class RegisterStartScreen extends StatefulWidget {
+  const RegisterStartScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<RegisterStartScreen> createState() => _RegisterStartScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _RegisterStartScreenState extends State<RegisterStartScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _workerCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   bool _loading = false;
   String? _error;
 
   @override
   void dispose() {
-    _workerCtrl.dispose();
     _phoneCtrl.dispose();
     super.dispose();
   }
@@ -39,16 +37,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final auth = context.read<AuthProvider>();
-      final res = await auth.login(
-        _workerCtrl.text.trim().isEmpty
-            ? null
-            : _workerCtrl.text.trim().toUpperCase(),
-        _phoneCtrl.text.trim(),
-      );
+      final res = await auth.login(null, _phoneCtrl.text.trim());
 
       if (!mounted) return;
-      if (res.isNewRegistration) {
-        setState(() => _error = 'Not registered. Please use Register.');
+
+      if (!res.isNewRegistration) {
+        setState(() => _error = 'Already registered. Please login instead.');
         return;
       }
 
@@ -57,7 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
         extra: {'phone': _phoneCtrl.text.trim()},
       );
     } catch (e) {
-      setState(() => _error = 'Login failed. Check your Worker ID and phone.');
+      setState(() => _error = 'Registration failed. Try again.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -66,44 +60,29 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(title: const Text('Register')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 40),
-              AegisLogo(size: 52),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               const Text(
-                'Welcome back',
-                style: TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w800,
-                  color: AegisColors.textPrimary,
-                ),
+                'Enter your phone number',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               const Text(
-                'Sign in to your Aegis account',
+                'We will send a verification OTP to continue registration.',
                 style:
-                    TextStyle(fontSize: 15, color: AegisColors.textSecondary),
+                    TextStyle(fontSize: 14, color: AegisColors.textSecondary),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 30),
               Form(
                 key: _formKey,
                 child: Column(
                   children: [
-                    TextFormField(
-                      controller: _workerCtrl,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: const InputDecoration(
-                        labelText: 'Worker ID (optional)',
-                        hintText: 'e.g. W001',
-                        prefixIcon: Icon(Icons.badge_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
                     TextFormField(
                       controller: _phoneCtrl,
                       keyboardType: TextInputType.phone,
@@ -123,7 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
                     if (_error != null) ...[
                       ErrorBanner(
                         message: _error!,
@@ -132,41 +111,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 16),
                     ],
                     AegisButton(
-                      label: 'Send OTP',
+                      label: 'Continue',
                       loading: _loading,
                       onPressed: _submit,
                       icon: const Icon(Icons.arrow_forward, size: 18),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 32),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AegisColors.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AegisColors.border),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline,
-                        color: AegisColors.textSecondary, size: 16),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        'New worker? Complete registration to activate coverage.',
-                        style: TextStyle(
-                            fontSize: 12, color: AegisColors.textSecondary),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => context.push(AppRoutes.register),
-                      child: const Text('Register Now'),
-                    )
-                  ],
-                ),
-              ),
+              )
             ],
           ),
         ),

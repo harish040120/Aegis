@@ -20,7 +20,7 @@ class OtpScreen extends StatefulWidget {
 
 class _OtpScreenState extends State<OtpScreen> {
   final _pinCtrl = TextEditingController();
-  bool _loading  = false;
+  bool _loading = false;
   String? _error;
   int _resendSeconds = 30;
   Timer? _timer;
@@ -52,10 +52,13 @@ class _OtpScreenState extends State<OtpScreen> {
 
   Future<void> _verify(String otp) async {
     if (otp.length < 6) return;
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
     try {
-      final auth     = context.read<AuthProvider>();
+      final auth = context.read<AuthProvider>();
       final verified = await auth.verifyOtp(otp);
 
       if (!verified) {
@@ -65,10 +68,10 @@ class _OtpScreenState extends State<OtpScreen> {
 
       if (!mounted) return;
 
-      if (auth.isNewRegistration) {
-        context.go(AppRoutes.register);
-      } else {
+      if (auth.resumedStep == RegistrationStep.done) {
         context.go(AppRoutes.home);
+      } else {
+        context.go(AppRoutes.register);
       }
     } catch (e) {
       setState(() => _error = 'Verification failed. Try again.');
@@ -116,7 +119,8 @@ class _OtpScreenState extends State<OtpScreen> {
               const SizedBox(height: 8),
               Text(
                 'Sent to +91 ${widget.phone}',
-                style: const TextStyle(fontSize: 14, color: AegisColors.textSecondary),
+                style: const TextStyle(
+                    fontSize: 14, color: AegisColors.textSecondary),
               ),
               const SizedBox(height: 40),
               Pinput(

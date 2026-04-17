@@ -1,51 +1,26 @@
 services:
-  database:
-    build:
-      context: ../
-      dockerfile: docker/database/Dockerfile
-    container_name: aegis-db
-    environment:
-      POSTGRES_DB: aegis_intelligence
-      POSTGRES_USER: aegis_admin
-      POSTGRES_PASSWORD: aegis_secure_pass
-    ports:
-      - "2003:5432"
-    volumes:
-      - aegis-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aegis_admin -d aegis_intelligence"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   backend-hub:
     build:
       context: ../backend-hub
-      dockerfile: ../docker/backend-hub/Dockerfile
+      dockerfile: ../../docker/backend-hub/Dockerfile
     container_name: aegis-backend-hub
     environment:
       PORT: 3015
-      DB_HOST: database
-      DB_PORT: 5432
-      DB_NAME: aegis_intelligence
-      DB_USER: aegis_admin
-      DB_PASSWORD: aegis_secure_pass
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}
       WEATHER_API_KEY: ${WEATHER_API_KEY:-demo}
       WAQI_API_KEY: ${WAQI_API_KEY:-demo}
     ports:
       - "3015:3015"
-    depends_on:
-      database:
-        condition: service_healthy
 
   model-backend:
     build:
       context: ../model-backend/backend
-      dockerfile: ../docker/model-backend/Dockerfile
+      dockerfile: ../../docker/model-backend/Dockerfile
     container_name: aegis-model-backend
     environment:
       PORT: 8010
-      DATABASE_URL: postgresql://aegis_admin:aegis_secure_pass@database:5432/aegis_intelligence
+      DATABASE_URL: ${DATABASE_URL}
       DATA_HUB_URL: http://backend-hub:3015/api/risk-data
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-demo}
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
@@ -54,17 +29,13 @@ services:
       - "8010:8010"
     depends_on:
       - backend-hub
-      - database
 
   frontend-admin:
     build:
       context: ../frontend-admin
-      dockerfile: ../docker/frontend-admin/Dockerfile
+      dockerfile: ../../docker/frontend-admin/Dockerfile
     container_name: aegis-admin-dashboard
     ports:
       - "2000:2000"
     depends_on:
       - model-backend
-
-volumes:
-  aegis-data:

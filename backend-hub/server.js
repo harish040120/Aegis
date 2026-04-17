@@ -1,19 +1,27 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const { Pool } = require('pg');
+const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3015;
 
-const pool = new Pool({
-    user: process.env.DB_USER || 'aegis_admin',
-    host: process.env.DB_HOST || 'localhost',
-    database: process.env.DB_NAME || 'aegis_intelligence',
-    password: process.env.DB_PASSWORD || 'aegis_secure_pass',
-    port: parseInt(process.env.DB_PORT) || 2003,
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing Supabase credentials. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.');
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false }
 });
+
+const supabaseAdmin = supabaseServiceKey
+    ? createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } })
+    : supabase;
 
 const WAQI_API_KEY = process.env.WAQI_API_KEY || "";
 const WEATHER_API_KEY = process.env.WEATHER_API_KEY || "";
@@ -22,7 +30,8 @@ app.use(cors({ origin: ['http://localhost:2000', 'http://localhost:3000'], crede
 app.use(express.json());
 
 // --- Simulation State ---
-let activeWorkerId = "W001"; 
+let activeWorkerId = "W001";
+let activeScenario = "normal";
 
 const SCENARIOS = {
     normal:        { orders_last_hour: 205, earnings_today: 1800, hours_worked_today: 7.5, traffic_index: 45, rain_override: 0, aqi_override: 45 },
@@ -45,9 +54,12 @@ let customParams = {
 // --- API Routes ---
 app.post('/api/scenario', (req, res) => {
     const { scenario_key, worker_id } = req.body;
+    console.log('[SCENARIO] Applying:', scenario_key, 'to worker:', worker_id);
     if (worker_id) activeWorkerId = worker_id;
     const s = SCENARIOS[scenario_key];
     if (s) {
+        activeScenario = scenario_key;
+        console.log('[SCENARIO] Active scenario set to:', activeScenario);
         Object.entries(s).forEach(([k, v]) => { if (customParams[k]) customParams[k].value = v; });
     }
     res.json({ applied: scenario_key, worker_id: activeWorkerId, params: customParams });
@@ -142,7 +154,9 @@ app.get('/api/risk-data', async (req, res) => {
     const uLon = parseFloat(lon) || 80.2707;
     const wId = worker_id || activeWorkerId;
 
-    const [realWeather, baselines] = await Promise.all([
+    console.log(`[REQUEST] /api/risk-data called with worker_id=${wId}, activeScenario=${activeScenario}`);
+
+    const [realWeather, baselineRes] = await Promise.all([
         (async () => {
             try {
                 const wRes = await axios.get(`https://api.openweathermap.org/data/2.5/weather?lat=${uLat}&lon=${uLon}&appid=${WEATHER_API_KEY}&units=metric`);
@@ -150,14 +164,17 @@ app.get('/api/risk-data', async (req, res) => {
                 return { w: wRes.data, q: qRes.data.data };
             } catch (e) { return null; }
         })(),
-        pool.query('SELECT avg_earnings_12w, avg_orders_7d, target_daily_hours, zone FROM workers WHERE worker_id = $1', [wId])
-            .catch(() => {
-                console.warn(`[WARN] DB baseline fetch failed for ${wId}, using defaults`);
-                return { rows: [] };
-            })
+        supabaseAdmin
+            .from('workers')
+            .select('avg_earnings_12w, avg_orders_7d, target_daily_hours, zone')
+            .eq('worker_id', wId)
+            .maybeSingle()
     ]);
 
-    const b = baselines.rows[0] || { avg_earnings_12w: 1800, avg_orders_7d: 14, target_daily_hours: 8.0, zone: "Chennai-Central" };
+    if (baselineRes?.error) {
+        console.warn(`[WARN] Supabase baseline fetch failed for ${wId}, using defaults: ${baselineRes.error.message}`);
+    }
+    const b = baselineRes?.data || { avg_earnings_12w: 1800, avg_orders_7d: 14, target_daily_hours: 8.0, zone: "Chennai-Central" };
     const weather = realWeather ? {
         temp: realWeather.w.main.temp,
         feels_like: realWeather.w.main.feels_like,
@@ -169,8 +186,12 @@ app.get('/api/risk-data', async (req, res) => {
 
     const calculateDrop = (curr, base) => Math.min(100, Math.max(0, parseFloat(((base - curr) / base * 100).toFixed(2))));
 
+    console.log('[RISK-DATA] activeScenario:', activeScenario);
+    console.log('[RISK-DATA] customParams:', JSON.stringify(customParams));
+
     res.json({
         "worker_id": wId,
+        "scenario": activeScenario,
         "location": { "lat": uLat, "lon": uLon, "place_name": weather.place_name, "zone": b.zone },
         "external_disruption": {
             "weather": { 
@@ -204,10 +225,13 @@ app.post('/api/params', (req, res) => {
 
 app.get('/api/workers', async (req, res) => {
     try {
-        const result = await pool.query(
-            "SELECT worker_id, name, zone FROM workers ORDER BY worker_id LIMIT 50"
-        );
-        res.json(result.rows);
+        const { data, error } = await supabaseAdmin
+            .from('workers')
+            .select('worker_id, name, zone')
+            .order('worker_id', { ascending: true })
+            .limit(50);
+        if (error) throw error;
+        res.json(data || []);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -288,31 +312,54 @@ app.post('/api/trigger-payout', async (req, res) => {
     const wId = worker_id || activeWorkerId;
     
     try {
-        const policyRes = await pool.query(
-            `SELECT policy_id FROM policies WHERE worker_id=$1 AND status='ACTIVE' LIMIT 1`,
-            [wId]
-        );
-        const policyId = policyRes.rows[0]?.policy_id || null;
+        const policyRes = await supabaseAdmin
+            .from('policies')
+            .select('policy_id')
+            .eq('worker_id', wId)
+            .eq('status', 'ACTIVE')
+            .order('coverage_end', { ascending: false })
+            .limit(1);
+        if (policyRes.error) throw policyRes.error;
+        const policyId = policyRes.data?.[0]?.policy_id || null;
         const payoutAmount = amount || 480;
-        const result = await pool.query(
-            `INSERT INTO payouts 
-             (worker_id, policy_id, trigger_type, trigger_pct, amount, risk_level, 
-              fraud_score, fraud_level, payout_status, gps_lat, gps_lng)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'APPROVED',$9,$10)
-             RETURNING payout_id`,
-            [wId, policyId, alert_type || 'Manual Trigger', 
-             trigger_pct || 0.80, payoutAmount, 
-             risk_level || 'HIGH', fraud_score || 0.05,
-             fraud_score > 0.3 ? 'MODERATE' : 'LOW',
-             lat || null, lon || null]
-        );
-        await pool.query(
-            `INSERT INTO audit_log (event_type, entity_type, entity_id, worker_id, action_by, severity, message)
-             VALUES ('PAYOUT_APPROVED','PAYOUT',$1,$2,'SYSTEM','INFO',$3)`,
-            [result.rows[0].payout_id.toString(), wId, 
-             `Auto payout ₹${payoutAmount} for ${alert_type}`]
-        );
-        res.json({ success: true, payout_id: result.rows[0].payout_id, amount: payoutAmount });
+        const baseFraudScore = typeof fraud_score === 'number' ? fraud_score : 0.05;
+        const { data: payoutRow, error: payoutError } = await supabaseAdmin
+            .from('payouts')
+            .insert([
+                {
+                    worker_id: wId,
+                    policy_id: policyId,
+                    trigger_type: alert_type || 'Manual Trigger',
+                    trigger_pct: trigger_pct || 0.80,
+                    amount: payoutAmount,
+                    risk_level: risk_level || 'HIGH',
+                    fraud_score: baseFraudScore,
+                    fraud_level: baseFraudScore > 0.3 ? 'MODERATE' : 'LOW',
+                    payout_status: 'APPROVED',
+                    gps_lat: lat || null,
+                    gps_lng: lon || null
+                }
+            ])
+            .select('payout_id')
+            .single();
+        if (payoutError) throw payoutError;
+
+        const payoutId = payoutRow?.payout_id;
+        if (payoutId) {
+            await supabaseAdmin.from('audit_log').insert([
+                {
+                    event_type: 'PAYOUT_APPROVED',
+                    entity_type: 'PAYOUT',
+                    entity_id: String(payoutId),
+                    worker_id: wId,
+                    action_by: 'SYSTEM',
+                    severity: 'INFO',
+                    message: `Auto payout ₹${payoutAmount} for ${alert_type || 'Manual Trigger'}`
+                }
+            ]);
+        }
+
+        res.json({ success: true, payout_id: payoutId, amount: payoutAmount });
     } catch (err) {
         res.status(500).json({ 
             error: err.message,
@@ -324,14 +371,20 @@ app.post('/api/trigger-payout', async (req, res) => {
 app.get('/api/payout-exists/:workerId/:date', async (req, res) => {
     const { workerId, date } = req.params;
     try {
-        const result = await pool.query(
-            `SELECT COUNT(*) as cnt FROM payouts 
-             WHERE worker_id = $1 
-             AND DATE(triggered_at) = $2 
-             AND payout_status IN ('APPROVED','PAID')`,
-            [workerId, date]
-        );
-        res.json({ exists: parseInt(result.rows[0].cnt) > 0 });
+        const start = new Date(date);
+        const end = new Date(date);
+        end.setDate(end.getDate() + 1);
+
+        const { count, error } = await supabaseAdmin
+            .from('payouts')
+            .select('payout_id', { count: 'exact', head: true })
+            .eq('worker_id', workerId)
+            .in('payout_status', ['APPROVED', 'PAID'])
+            .gte('triggered_at', start.toISOString())
+            .lt('triggered_at', end.toISOString());
+
+        if (error) throw error;
+        res.json({ exists: (count || 0) > 0 });
     } catch (err) {
         res.status(500).json({ exists: false, error: err.message });
     }
