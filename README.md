@@ -5,6 +5,8 @@
 
 ---
 
+Pitch Deck : [https://github.com/harish040120/Aegis/blob/main/TEAM%20ZERO%20NOISE%20CREW.pdf]
+
 ## 1. The Problem
 
 India has over 5 million active food delivery partners. They earn only when they ride. A single rain event, a red-alert pollution day, or a sudden curfew can wipe out an entire dinner rush — with zero recourse.
