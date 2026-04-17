@@ -26,7 +26,7 @@ const supabaseAdmin = supabaseServiceKey
 const WAQI_API_KEY = process.env.WAQI_API_KEY || "";
 const WEATHER_API_KEY = process.env.WEATHER_API_KEY || "";
 
-app.use(cors({ origin: ['http://localhost:2000', 'http://localhost:3000'], credentials: true }));
+app.use(cors({ origin: '*' })); // Use '*' during development to avoid blocking your Netlify app
 app.use(express.json());
 
 // --- Simulation State ---
