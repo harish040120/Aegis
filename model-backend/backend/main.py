@@ -12,6 +12,7 @@ import pickle
 import numpy as np
 import pandas as pd
 import os
+import sys
 import httpx
 import asyncio
 import asyncpg
@@ -58,6 +59,7 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 DATA_HUB_URL = os.getenv("DATA_HUB_URL", "http://localhost:3015/api/risk-data")
 DATABASE_URL = os.getenv("DATABASE_URL")
+DB_POOL_MAX = int(os.getenv("DB_POOL_MAX", "3"))
 print("DATABASE_URL =", DATABASE_URL)
 GOOGLE_KEY = os.environ.get("GOOGLE_API_KEY", "")
 HUB_URL = os.getenv("DATA_HUB_URL", "http://localhost:3015").replace("/api/risk-data", "")
@@ -82,13 +84,38 @@ def _ssl_mode_from_url(url: str) -> str | None:
     return None
 
 
+_DB_POOL = None
+
+
+class _PooledConn:
+    def __init__(self, pool, conn):
+        self._pool = pool
+        self._conn = conn
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    async def close(self):
+        await self._pool.release(self._conn)
+
+
+async def _init_db_pool():
+    global _DB_POOL
+    if _DB_POOL is None:
+        ssl_mode = _ssl_mode_from_url(DATABASE_URL or "")
+        ssl_setting = "require" if ssl_mode == "require" else "prefer"
+        _DB_POOL = await asyncpg.create_pool(
+            DATABASE_URL,
+            ssl=ssl_setting,
+            min_size=1,
+            max_size=DB_POOL_MAX
+        )
+
+
 async def get_db_conn():
-    ssl_mode = _ssl_mode_from_url(DATABASE_URL or "")
-    ssl_setting = "require" if ssl_mode == "require" else "prefer"
-    return await asyncpg.connect(
-        DATABASE_URL,
-        ssl=ssl_setting
-    )
+    await _init_db_pool()
+    conn = await _DB_POOL.acquire()
+    return _PooledConn(_DB_POOL, conn)
 
 # --- Schemas ---
 
@@ -138,6 +165,17 @@ FRAUD_FEATURES: Any = None
 MODELS_READY = False
 
 # --- Load ML Models ---
+# NOTE: models are serialized with sklearn>=1.8.0 which references _loss
+# via cython-backed symbols. Map the legacy module name to the cython module.
+try:
+    import sklearn._loss._loss as _sk_loss
+    sys.modules["_loss"] = _sk_loss
+except Exception:
+    try:
+        import sklearn._loss as _sk_loss
+        sys.modules["_loss"] = _sk_loss
+    except Exception:
+        pass
 def _load(filename):
     path = os.path.join(BASE_DIR, filename)
     if not os.path.exists(path):
@@ -411,12 +449,17 @@ scheduler.add_job(
 
 @app.on_event("startup")
 async def startup_event():
+    await _init_db_pool()
     scheduler.start()
     print("[AEGIS] Auto-trigger loop started - 60s interval")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     scheduler.shutdown()
+    global _DB_POOL
+    if _DB_POOL is not None:
+        await _DB_POOL.close()
+        _DB_POOL = None
 
 @app.get("/test-db")
 async def test_db():
