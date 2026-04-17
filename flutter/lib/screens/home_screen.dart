@@ -126,7 +126,7 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
     _loadNotifications();
     _pingTimer = Timer.periodic(const Duration(minutes: 1), (_) => _ping());
     _metricsTimer =
-        Timer.periodic(const Duration(seconds: 30), (_) => _loadMetrics());
+        Timer.periodic(const Duration(seconds: 60), (_) => _loadMetrics());
     _notifTimer = Timer.periodic(
         const Duration(seconds: 30), (_) => _loadNotifications());
   }
@@ -208,6 +208,45 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
       await _loadHome();
     } catch (e) {
       setState(() => _error = 'Analysis failed. Please retry.');
+    } finally {
+      if (mounted) setState(() => _analyzing = false);
+    }
+  }
+
+  Future<void> _locationUpdate() async {
+    setState(() {
+      _analyzing = true;
+      _error = null;
+    });
+    try {
+      final api = context.read<AuthProvider>().api;
+      Position? pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.low,
+        );
+      } catch (_) {}
+
+      final res = await api.locationUpdate(
+        workerId: widget.workerId,
+        lat: pos?.latitude ?? 13.0827,
+        lon: pos?.longitude ?? 80.2707,
+      );
+
+      if (!mounted) return;
+      final fromZone = res['from_zone'] ?? '';
+      final toZone = res['to_zone'] ?? '';
+      if (fromZone.isNotEmpty && toZone.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Location updated: $fromZone → $toZone'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      await _loadHome();
+    } catch (_) {
+      setState(() => _error = 'Location update failed.');
     } finally {
       if (mounted) setState(() => _analyzing = false);
     }
@@ -384,6 +423,13 @@ class _HomeDashboardTabState extends State<HomeDashboardTab> {
             onPressed: _analyze,
             icon: const Icon(Icons.analytics_outlined, size: 18),
           ),
+          const SizedBox(height: 10),
+          AegisButton(
+            label: _analyzing ? 'Updating Location…' : 'Update Location',
+            loading: _analyzing,
+            onPressed: _locationUpdate,
+            icon: const Icon(Icons.my_location, size: 18),
+          ),
           const SizedBox(height: 8),
           const Center(
             child: Text(
@@ -449,7 +495,8 @@ class _RiskCard extends StatelessWidget {
             ),
           ),
           if (live.activeScenario.isNotEmpty &&
-              live.activeScenario != 'normal') ...[
+              live.activeScenario != 'normal' &&
+              live.activeScenario != 'location_update') ...[
             const SizedBox(height: 10),
             Row(
               children: [
@@ -1256,9 +1303,7 @@ class _PayoutsTabState extends State<PayoutsTab> {
       return const Center(
           child: CircularProgressIndicator(color: AegisColors.primary));
 
-    final total = _payouts?.fold<double>(
-            0, (s, p) => s + (p.payoutStatus == 'PAID' ? p.amount : 0)) ??
-        0;
+    final total = _payouts?.fold<double>(0, (s, p) => s + p.amount) ?? 0;
 
     return RefreshIndicator(
       color: AegisColors.primary,

@@ -133,6 +133,62 @@ class KycRequest(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     lat: float; lon: float; worker_id: str = "W001"
+
+
+@app.post("/api/v1/location-update")
+async def location_update(req: AnalyzeRequest):
+    """Update worker location and log a new order without triggering alerts."""
+    conn = await get_db_conn()
+    try:
+        worker = await conn.fetchrow("SELECT zone, city, platform, lat, lon FROM workers WHERE worker_id=$1", req.worker_id)
+        if not worker:
+            raise HTTPException(status_code=404, detail="Worker not found")
+
+        lat = req.lat
+        lon = req.lon
+        zone = "Chennai-Central"
+        if lat < 13.0:
+            zone = "Chennai-South"
+        elif lon > 80.3:
+            zone = "Chennai-East"
+        elif lat > 13.1 and lon < 80.25:
+            zone = "Chennai-North"
+
+        await conn.execute(
+            """UPDATE workers SET zone=$1, lat=$2, lon=$3, lat_last=$2, lon_last=$3 WHERE worker_id=$4""",
+            zone, lat, lon, req.worker_id
+        )
+
+        await conn.execute(
+            """INSERT INTO zone_location_log (worker_id, from_zone, to_zone, from_lat, from_lon, to_lat, to_lon)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+            req.worker_id, worker.get("zone"), zone, worker.get("lat"), worker.get("lon"), lat, lon
+        )
+
+        await conn.execute(
+            """INSERT INTO orders (worker_id, lat, lon, earnings, platform, zone)
+               VALUES ($1, $2, $3, $4, $5, $6)""",
+            req.worker_id, lat, lon, 120.0, worker.get("platform") or "ZOMATO", zone
+        )
+
+        await conn.execute(
+            """INSERT INTO worker_sessions (worker_id, session_date, lat_last, lon_last, zone)
+               VALUES ($1, CURRENT_DATE, $2, $3, $4)
+               ON CONFLICT (worker_id, session_date)
+               DO UPDATE SET lat_last=EXCLUDED.lat_last, lon_last=EXCLUDED.lon_last, zone=EXCLUDED.zone""",
+            req.worker_id, lat, lon, zone
+        )
+
+        return {
+            "status": "LOCATION_UPDATED",
+            "worker_id": req.worker_id,
+            "from_zone": worker.get("zone"),
+            "to_zone": zone,
+            "lat": lat,
+            "lon": lon,
+        }
+    finally:
+        await conn.close()
     hours_worked_today: Optional[float] = None
     movement_distance_km: Optional[float] = None
     deliveries_completed_today: Optional[int] = None
@@ -1377,7 +1433,8 @@ async def get_alerts_history(worker_id: str):
         rows = await conn.fetch(
             """SELECT alert_id, type, severity, metric_value, threshold_value, claimed, 
                       claimed_at, expires_at, status
-               FROM alerts WHERE worker_id=$1 ORDER BY claimed_at DESC LIMIT 20""",
+               FROM alerts WHERE worker_id=$1 AND type NOT IN ('normal','location_update')
+               ORDER BY claimed_at DESC LIMIT 20""",
             worker_id
         )
         return [{
@@ -1417,7 +1474,7 @@ async def get_live_metrics(worker_id: str):
 
         risk_score = float(analysis["live_risk_score"]) if analysis and analysis["live_risk_score"] else 0.0
         active_scenario = analysis["active_scenario"] if analysis else "normal"
-        scenario_active = active_scenario != "normal"
+        scenario_active = active_scenario not in ("normal", "location_update")
 
         risk_level = "LOW"
         if risk_score >= 0.85: risk_level = "CRITICAL"

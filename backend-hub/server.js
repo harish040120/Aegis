@@ -40,6 +40,33 @@ const SCENARIOS = {
     severe_flood:  { orders_last_hour: 85,  earnings_today: 750,  hours_worked_today: 1.5, traffic_index: 85, rain_override: 80, aqi_override: 15 },
     hazardous_aqi: { orders_last_hour: 92,  earnings_today: 830,  hours_worked_today: 3.5, traffic_index: 60, rain_override: 0, aqi_override: 185 },
     gps_fraud:     { orders_last_hour: 85,  earnings_today: 750,  hours_worked_today: 8.0, traffic_index: 45, rain_override: 0, aqi_override: 45 },
+    location_update: { orders_last_hour: 1, earnings_today: 220, hours_worked_today: 0.5, traffic_index: 25, rain_override: 0, aqi_override: 45 },
+};
+
+const ZONE_LOCATIONS = {
+    "Chennai-Central": { zone: "Chennai-Central", city: "Chennai", lat: 13.0827, lon: 80.2707 },
+    "Chennai-North": { zone: "Chennai-North", city: "Chennai", lat: 13.1500, lon: 80.2500 },
+    "Chennai-East": { zone: "Chennai-East", city: "Chennai", lat: 13.1100, lon: 80.3200 },
+    "Chennai-South": { zone: "Chennai-South", city: "Chennai", lat: 12.9250, lon: 80.2500 },
+    "Chennai-West": { zone: "Chennai-West", city: "Chennai", lat: 13.0700, lon: 80.2100 },
+    "Coimbatore-Central": { zone: "Coimbatore-Central", city: "Coimbatore", lat: 11.0168, lon: 76.9558 },
+    "Coimbatore-North": { zone: "Coimbatore-North", city: "Coimbatore", lat: 11.0800, lon: 76.9500 },
+    "Coimbatore-South": { zone: "Coimbatore-South", city: "Coimbatore", lat: 10.9800, lon: 76.9500 },
+    "Coimbatore-East": { zone: "Coimbatore-East", city: "Coimbatore", lat: 11.0200, lon: 77.0200 },
+    "Coimbatore-West": { zone: "Coimbatore-West", city: "Coimbatore", lat: 11.0200, lon: 76.8800 },
+};
+
+const nextZoneMap = {
+    "Chennai-Central": "Chennai-East",
+    "Chennai-East": "Chennai-South",
+    "Chennai-South": "Chennai-North",
+    "Chennai-North": "Chennai-West",
+    "Chennai-West": "Chennai-Central",
+    "Coimbatore-Central": "Coimbatore-North",
+    "Coimbatore-North": "Coimbatore-East",
+    "Coimbatore-East": "Coimbatore-South",
+    "Coimbatore-South": "Coimbatore-West",
+    "Coimbatore-West": "Coimbatore-Central",
 };
 
 let customParams = {
@@ -52,7 +79,7 @@ let customParams = {
 };
 
 // --- API Routes ---
-app.post('/api/scenario', (req, res) => {
+app.post('/api/scenario', async (req, res) => {
     const { scenario_key, worker_id } = req.body;
     console.log('[SCENARIO] Applying:', scenario_key, 'to worker:', worker_id);
     if (worker_id) activeWorkerId = worker_id;
@@ -62,7 +89,140 @@ app.post('/api/scenario', (req, res) => {
         console.log('[SCENARIO] Active scenario set to:', activeScenario);
         Object.entries(s).forEach(([k, v]) => { if (customParams[k]) customParams[k].value = v; });
     }
-    res.json({ applied: scenario_key, worker_id: activeWorkerId, params: customParams });
+    let locationUpdate = null;
+    if (scenario_key === 'location_update') {
+        try {
+            const { data: worker, error } = await supabaseAdmin
+                .from('workers')
+                .select('worker_id, zone, city, lat, lon, platform')
+                .eq('worker_id', activeWorkerId)
+                .maybeSingle();
+
+            if (!error && worker) {
+                const currentZone = worker.zone || 'Chennai-Central';
+                const nextZone = nextZoneMap[currentZone] || 'Chennai-Central';
+                const nextLoc = ZONE_LOCATIONS[nextZone] || ZONE_LOCATIONS['Chennai-Central'];
+
+                await supabaseAdmin
+                    .from('workers')
+                    .update({
+                        zone: nextLoc.zone,
+                        city: nextLoc.city,
+                        lat: nextLoc.lat,
+                        lon: nextLoc.lon,
+                        lat_last: nextLoc.lat,
+                        lon_last: nextLoc.lon,
+                    })
+                    .eq('worker_id', activeWorkerId);
+
+                await supabaseAdmin
+                    .from('zone_location_log')
+                    .insert([
+                        {
+                            worker_id: activeWorkerId,
+                            from_zone: currentZone,
+                            to_zone: nextLoc.zone,
+                            from_lat: worker.lat,
+                            from_lon: worker.lon,
+                            to_lat: nextLoc.lat,
+                            to_lon: nextLoc.lon,
+                            orders_in_new_zone: 1,
+                        },
+                    ]);
+
+                await supabaseAdmin
+                    .from('orders')
+                    .insert([
+                        {
+                            worker_id: activeWorkerId,
+                            lat: nextLoc.lat,
+                            lon: nextLoc.lon,
+                            earnings: 120,
+                            platform: worker.platform || 'ZOMATO',
+                            zone: nextLoc.zone,
+                        },
+                    ]);
+
+                await supabaseAdmin
+                    .from('worker_sessions')
+                    .insert([
+                        {
+                            worker_id: activeWorkerId,
+                            session_date: new Date().toISOString().slice(0, 10),
+                            lat_last: nextLoc.lat,
+                            lon_last: nextLoc.lon,
+                            zone: nextLoc.zone,
+                        },
+                    ]);
+
+                locationUpdate = {
+                    updated: true,
+                    from_zone: currentZone,
+                    to_zone: nextLoc.zone,
+                    lat: nextLoc.lat,
+                    lon: nextLoc.lon,
+                };
+            }
+        } catch (err) {
+            console.warn('[SCENARIO] Location update failed:', err.message);
+        }
+    }
+
+    res.json({ applied: scenario_key, worker_id: activeWorkerId, params: customParams, location: locationUpdate });
+});
+
+app.get('/api/dual-gates', async (req, res) => {
+    const { worker_id } = req.query;
+    const wId = worker_id || activeWorkerId;
+    const [baselineRes] = await Promise.all([
+        supabaseAdmin
+            .from('workers')
+            .select('avg_earnings_12w, avg_orders_7d, target_daily_hours, zone')
+            .eq('worker_id', wId)
+            .maybeSingle(),
+    ]);
+
+    const b = baselineRes?.data || { avg_earnings_12w: 1800, avg_orders_7d: 14, target_daily_hours: 8.0, zone: 'Chennai-Central' };
+    const calculateDrop = (curr, base) => Math.min(100, Math.max(0, parseFloat(((base - curr) / base * 100).toFixed(2))));
+
+    const rain = customParams.rain_override.value;
+    const aqi = customParams.aqi_override.value;
+    const scenarioReasons = [];
+    if (rain > 45) scenarioReasons.push(`Rain ${rain}mm > 45mm`);
+    if (aqi > 120) scenarioReasons.push(`AQI ${aqi} > 120`);
+    const scenarioTriggered = scenarioReasons.length > 0;
+
+    const orderDrop = calculateDrop(customParams.orders_last_hour.value, b.avg_orders_7d / 8.0);
+    const earningsDrop = calculateDrop(customParams.earnings_today.value, b.avg_earnings_12w);
+    const activityDrop = calculateDrop(customParams.hours_worked_today.value, b.target_daily_hours);
+    const businessReasons = [];
+    if (earningsDrop >= 45) businessReasons.push(`Earnings drop ${earningsDrop}% > 45%`);
+    if (orderDrop >= 45) businessReasons.push(`Order drop ${orderDrop}% > 45%`);
+    if (activityDrop >= 45) businessReasons.push(`Activity drop ${activityDrop}% > 45%`);
+    const businessTriggered = businessReasons.length > 0;
+
+    res.json({
+        worker_id: wId,
+        scenario: activeScenario,
+        location: { zone: b.zone },
+        dual_gate_triggered: scenarioTriggered && businessTriggered,
+        gates: {
+            scenario: {
+                triggered: scenarioTriggered,
+                reasons: scenarioReasons,
+                rain_mm: rain,
+                aqi: aqi,
+            },
+            business: {
+                triggered: businessTriggered,
+                reasons: businessReasons,
+                earnings_drop_pct: earningsDrop,
+                order_drop_pct: orderDrop,
+                activity_drop_pct: activityDrop,
+            },
+        },
+        updated_at: new Date().toISOString(),
+    });
 });
 
 app.get('/api/test-alerts', (req, res) => {

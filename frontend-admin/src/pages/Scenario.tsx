@@ -41,10 +41,11 @@ type ParamMeta = Record<string, { min: number; max: number }>;
 const scenarioPresets = [
   { key: 'normal', label: 'Normal', tag: 'Baseline', rain: 0, aqi: 45, earnings: 1800, hours: 7.5 },
   { key: 'light_rain', label: 'Light Rain', tag: 'Mild', rain: 15, aqi: 30, earnings: 1540, hours: 5.5 },
-  { key: 'heavy_rain', label: 'Heavy Rain', tag: 'Gate 1', rain: 52, aqi: 20, earnings: 1065, hours: 4.0 },
-  { key: 'severe_flood', label: 'Severe Flood', tag: 'Demo', rain: 80, aqi: 15, earnings: 750, hours: 1.5 },
-  { key: 'hazardous_aqi', label: 'Hazardous AQI', tag: 'Gate 1', rain: 0, aqi: 185, earnings: 830, hours: 3.5 },
-  { key: 'gps_fraud', label: 'GPS Fraud', tag: 'Fraud', rain: 0, aqi: 45, earnings: 750, hours: 8.0 }
+  { key: 'heavy_rain', label: 'Heavy Rain', tag: 'Scenario Gate', rain: 52, aqi: 20, earnings: 1065, hours: 4.0 },
+  { key: 'severe_flood', label: 'Severe Flood', tag: 'Dual Gate', rain: 80, aqi: 15, earnings: 750, hours: 1.5 },
+  { key: 'hazardous_aqi', label: 'Hazardous AQI', tag: 'Scenario Gate', rain: 0, aqi: 185, earnings: 830, hours: 3.5 },
+  { key: 'gps_fraud', label: 'GPS Fraud', tag: 'Fraud', rain: 0, aqi: 45, earnings: 750, hours: 8.0 },
+  { key: 'location_update', label: 'Location Update', tag: 'Location', rain: 0, aqi: 45, earnings: 220, hours: 0.5 }
 ];
 
 const defaultParams: ParamState = {
@@ -77,6 +78,8 @@ export const Scenario: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [payoutRef, setPayoutRef] = useState<string | null>(null);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [dualGate, setDualGate] = useState<any>(null);
+  const [locationUpdate, setLocationUpdate] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [lat, setLat] = useState(13.0827);
   const [lon, setLon] = useState(80.2707);
@@ -123,6 +126,11 @@ export const Scenario: React.FC = () => {
     setAlerts(data || []);
   };
 
+  const loadDualGate = async (workerId: string) => {
+    const data = await apiGet(`/api/dual-gates?worker_id=${workerId}`, 'HUB');
+    setDualGate(data || null);
+  };
+
   useEffect(() => {
     loadWorkers();
     loadParams();
@@ -130,6 +138,7 @@ export const Scenario: React.FC = () => {
 
   useEffect(() => {
     loadAlerts(selectedWorker);
+    loadDualGate(selectedWorker);
   }, [selectedWorker]);
 
   const applyScenario = async (scenario_key: string) => {
@@ -138,8 +147,16 @@ export const Scenario: React.FC = () => {
     if (data?.params) {
       setParamsFromHub(data.params);
     }
+    if (data?.location?.updated) {
+      setLocationUpdate(data.location);
+      setLat(data.location.lat);
+      setLon(data.location.lon);
+    } else {
+      setLocationUpdate(null);
+    }
     await apiPost('/api/v1/analyze', { worker_id: selectedWorker, lat, lon });
     await loadAlerts(selectedWorker);
+    await loadDualGate(selectedWorker);
   };
 
   const updateParam = async (name: keyof ParamState, value: number) => {
@@ -147,6 +164,7 @@ export const Scenario: React.FC = () => {
     setParams((p) => ({ ...p, [name]: numericValue }));
     await apiPost('/api/params', { name, value: numericValue }, 'HUB');
     await loadAlerts(selectedWorker);
+    await loadDualGate(selectedWorker);
   };
 
   const runAnalysis = async () => {
@@ -161,6 +179,7 @@ export const Scenario: React.FC = () => {
       setAnalysisJson(JSON.stringify(data, null, 2));
       setLastUpdated(new Date().toLocaleTimeString());
       await loadAlerts(selectedWorker);
+      await loadDualGate(selectedWorker);
     } catch (err: any) {
       setError(err?.message || 'Analysis failed');
       setAnalysis(null);
@@ -371,36 +390,61 @@ export const Scenario: React.FC = () => {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <ShieldAlert size={16} className="text-[var(--gw-blue)]" />
-                <h3 className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Hub Alerts</h3>
+                <h3 className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Dual Gate Signals</h3>
               </div>
               <button
-                onClick={() => loadAlerts(selectedWorker)}
+                onClick={() => loadDualGate(selectedWorker)}
                 className="px-3 py-1 text-[10px] font-black uppercase tracking-widest bg-slate-100 rounded flex items-center gap-2"
               >
                 <RefreshCw size={12} /> Refresh
               </button>
             </div>
-            {alerts.length === 0 ? (
-              <div className="text-xs text-slate-400">No alerts available</div>
+            {!dualGate ? (
+              <div className="text-xs text-slate-400">No scenario evaluation yet</div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {alerts.map((alert) => (
-                  <div key={alert.alert_id} className="p-3 rounded border border-[var(--border-gray)] bg-slate-50">
-                    <div className="text-[10px] font-black uppercase tracking-widest text-[var(--deep-navy)]">
-                      {alert.type}
-                    </div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-1">
-                      Metric {alert.metric_value ?? 0} | Threshold {alert.threshold_value ?? 0}
-                    </div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-1">
-                      Expires {new Date(alert.expires_at).toLocaleTimeString()}
-                    </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className={`status-pill ${alert.status === 'ACTIVE' ? 'status-live' : 'status-watch'}`}>{alert.status}</span>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{alert.severity}</span>
-                    </div>
+                <div className="p-3 rounded border border-[var(--border-gray)] bg-slate-50">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-[var(--deep-navy)]">
+                    Scenario Gate
                   </div>
-                ))}
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-1">
+                    {dualGate.gates?.scenario?.triggered ? 'Triggered' : 'Normal'}
+                  </div>
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-1">
+                    Rain {dualGate.gates?.scenario?.rain_mm ?? 0}mm | AQI {dualGate.gates?.scenario?.aqi ?? 0}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className={`status-pill ${dualGate.gates?.scenario?.triggered ? 'status-live' : 'status-watch'}`}>
+                      {dualGate.gates?.scenario?.triggered ? 'TRIGGERED' : 'NORMAL'}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-3 rounded border border-[var(--border-gray)] bg-slate-50">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-[var(--deep-navy)]">
+                    Business Logic
+                  </div>
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-1">
+                    {dualGate.gates?.business?.triggered ? 'Triggered' : 'Normal'}
+                  </div>
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-1">
+                    Earnings drop {dualGate.gates?.business?.earnings_drop_pct ?? 0}%
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className={`status-pill ${dualGate.gates?.business?.triggered ? 'status-live' : 'status-watch'}`}>
+                      {dualGate.gates?.business?.triggered ? 'TRIGGERED' : 'NORMAL'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+            {dualGate?.dual_gate_triggered && (
+              <div className="mt-3 text-[10px] font-bold uppercase tracking-widest text-[var(--gw-blue)]">
+                Dual gate satisfied: scenario + business logic
+              </div>
+            )}
+            {locationUpdate?.updated && (
+              <div className="mt-3 text-[10px] font-bold uppercase tracking-widest text-emerald-600">
+                Location updated: {locationUpdate.from_zone} → {locationUpdate.to_zone}
               </div>
             )}
           </div>

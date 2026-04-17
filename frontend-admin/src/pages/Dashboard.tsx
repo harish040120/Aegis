@@ -63,6 +63,7 @@ export const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<AdminStats>(defaultStats);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [riskSnapshot, setRiskSnapshot] = useState<any>(null);
 
   const fetchStats = async () => {
     setLoading(true);
@@ -75,10 +76,24 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  const fetchRisk = async () => {
+    try {
+      const data = await apiGet('/api/v1/live-metrics/W001');
+      setRiskSnapshot(data);
+    } catch {
+      setRiskSnapshot(null);
+    }
+  };
+
   useEffect(() => {
     fetchStats();
-    const id = setInterval(fetchStats, 30000);
-    return () => clearInterval(id);
+    fetchRisk();
+    const statsId = setInterval(fetchStats, 30000);
+    const riskId = setInterval(fetchRisk, 60000);
+    return () => {
+      clearInterval(statsId);
+      clearInterval(riskId);
+    };
   }, []);
 
   const ticker = useMemo(() => stats.recent_payouts.slice(0, 4), [stats.recent_payouts]);
@@ -121,27 +136,32 @@ export const Dashboard: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="metric-card lg:col-span-2 bg-gradient-to-br from-slate-900 via-[#0F1C2E] to-[#001B32] text-white border-transparent">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Activity size={16} className="text-[var(--teal-accent)]" />
-              <span className="text-[11px] font-bold uppercase tracking-widest text-white/70">Live Payout Pulse</span>
-            </div>
+          <div className="metric-card lg:col-span-2 bg-gradient-to-br from-slate-900 via-[#0F1C2E] to-[#001B32] text-white border-transparent">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity size={16} className="text-[var(--teal-accent)]" />
+                <span className="text-[11px] font-bold uppercase tracking-widest text-white/70">Live Payout Pulse</span>
+              </div>
             <span className="text-[10px] font-black uppercase tracking-widest text-white/60">TN-01 Cluster</span>
+            </div>
+            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+              <PulseStat label="Paid Today" value={`INR ${Math.round(headline.totalPaid).toLocaleString()}`} icon={CircleDollarSign} />
+              <PulseStat label="Payouts" value={headline.totalPayouts} icon={Banknote} />
+              <PulseStat label="Held" value={headline.heldCount} icon={ShieldAlert} />
+              <PulseStat label="Fraud Flags" value={headline.fraud} icon={AlertTriangle} tone="danger" />
+            </div>
+            <div className="mt-6 flex items-center justify-between text-[10px] uppercase tracking-widest text-white/60">
+              <span>Risk Score: {riskSnapshot?.risk_score?.toFixed(1) ?? '--'} / 10</span>
+              <span>Risk Level: {riskSnapshot?.risk_level ?? '--'}</span>
+              <span>Scenario: {riskSnapshot?.active_scenario ?? 'normal'}</span>
+            </div>
+            <div className="mt-6 flex flex-wrap gap-4 text-[10px] uppercase tracking-widest text-white/60">
+              <span>Paid Count: {headline.paidCount}</span>
+              <span>Active Alerts: {stats.kpis.active_alerts}</span>
+              <span>Verified Workers: {stats.kpis.verified_workers}</span>
+              <span>Active Policies: {stats.kpis.active_policies}</span>
+            </div>
           </div>
-          <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-            <PulseStat label="Paid Today" value={`INR ${Math.round(headline.totalPaid).toLocaleString()}`} icon={CircleDollarSign} />
-            <PulseStat label="Payouts" value={headline.totalPayouts} icon={Banknote} />
-            <PulseStat label="Held" value={headline.heldCount} icon={ShieldAlert} />
-            <PulseStat label="Fraud Flags" value={headline.fraud} icon={AlertTriangle} tone="danger" />
-          </div>
-          <div className="mt-6 flex flex-wrap gap-4 text-[10px] uppercase tracking-widest text-white/60">
-            <span>Paid Count: {headline.paidCount}</span>
-            <span>Active Alerts: {stats.kpis.active_alerts}</span>
-            <span>Verified Workers: {stats.kpis.verified_workers}</span>
-            <span>Active Policies: {stats.kpis.active_policies}</span>
-          </div>
-        </div>
 
         <div className="metric-card">
           <div className="flex items-center justify-between">

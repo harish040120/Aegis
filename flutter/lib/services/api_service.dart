@@ -258,6 +258,18 @@ class ApiService {
     return LiveMetrics.fromJson(data);
   }
 
+  Future<Map<String, dynamic>> locationUpdate({
+    required String workerId,
+    required double lat,
+    required double lon,
+  }) async {
+    return await _post('/location-update', {
+      'worker_id': workerId,
+      'lat': lat,
+      'lon': lon,
+    });
+  }
+
   // ─── Pricing Tiers (Dynamic based on earnings) ────────────────────────────
 
   Future<PricingResponse> getPricingTiers({String? workerId}) async {
