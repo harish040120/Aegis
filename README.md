@@ -3,9 +3,9 @@
 > **Guidewire DEVTrails 2026 | Phase 3 Submission**
 > **Team:** Zero Noise Crew | **Persona:** Food Delivery
 
----
+**Pitch Deck:** [https://github.com/harish040120/Aegis/blob/main/TEAM%20ZERO%20NOISE%20CREW.pdf]
 
-Pitch Deck : [https://github.com/harish040120/Aegis/blob/main/TEAM%20ZERO%20NOISE%20CREW.pdf]
+---
 
 ## 1. The Problem
 
@@ -26,7 +26,53 @@ Shiva delivers for Zomato full-time, averaging ₹700–₹1,000/day across 8–
 
 ---
 
-## 2. How Aegis Works — The Big Picture
+## 2. Why Aegis Wins: The 10-Point Advantage
+
+Traditional insurance fails gig workers because it is slow, subjective, and expensive. Aegis reinvents the model using parametric triggers and automation.
+
+### 1. Objective & Verifiable Trigger
+*   **Problem:** Insurance systems often fail when triggers are subjective or unverifiable.
+*   **Aegis Solution:** Aegis uses *quantifiable external data sources* such as AQI > 300 from CPCB API, rainfall data from OpenWeatherMap, and IMD weather alerts. This ensures all triggers are *objective, transparent, and auditable*.
+
+### 2. Clear Scope of Coverage
+*   **Problem:** Traditional insurance mixes multiple risks (health, life, vehicle), causing ambiguity.
+*   **Aegis Solution:** Aegis strictly focuses on *income loss due to weather, AQI, and disruptions*. This makes the coverage simple, transparent, and easy to understand for gig workers.
+
+### 3. Automatic Payout Mechanism
+*   **Problem:** Manual claims cause delays, fraud, and poor user experience.
+*   **Aegis Solution:** A 60-second scheduler detects triggers, ML models validate impact, and Razorpay sends UPI payouts instantly. **No claim filing required.**
+
+### 4. Financial Sustainability
+*   **Problem:** Insurance pools collapse if payouts exceed collected premiums.
+*   **Aegis Solution:** Uses a *Benefit-Cost Ratio (BCR ≈ 0.65)*, stress-tested for monsoon scenarios, with payout caps via policies to ensure long-term sustainability.
+
+### 5. Data-Driven Fraud Detection
+*   **Problem:** Behavior-based fraud checks are unreliable.
+*   **Aegis Solution:** Combines GPS vs. session tracking, order history validation, Isolation Forest ML models, and a Rule engine + GNN fraud detection system for fully *data-driven fraud prevention*.
+
+### 6. Frictionless Premium Collection
+*   **Problem:** Manual payment systems reduce adoption.
+*   **Aegis Solution:** Weekly micro-premiums (₹34) via UPI auto-pay or platform integration ensure seamless, no-manual-effort collection.
+
+### 7. Dynamic Pricing Model
+*   **Problem:** Flat premiums ignore real-world risk variation.
+*   **Aegis Solution:** Premiums adjust based on season (monsoon, summer), zone risk, and worker activity, ensuring fair and adaptive pricing.
+
+### 8. Adverse Selection Prevention
+*   **Problem:** Users may enroll only when risk is imminent.
+*   **Aegis Solution:** Enrollment lock periods before major alerts and strict policy activation rules prevent last-minute exploitation.
+
+### 9. Low Operational Cost
+*   **Problem:** Manual insurance processes increase administrative cost.
+*   **Aegis Solution:** A fully automated pipeline (Detection → Analysis → Payout) requires no human intervention, resulting in near-zero operational overhead.
+
+### 10. Minimized Basis Risk
+*   **Problem:** Mismatch between actual loss and trigger leads to unfair payouts.
+*   **Aegis Solution:** Hyper-local zone-based triggers, GPS-based worker validation, and real-time activity monitoring ensure accurate and fair payouts.
+
+---
+
+## 3. How Aegis Works — The Big Picture
 
 Shiva downloads the Aegis app once. He registers, picks a plan, and pays ₹34 for his first week. From that moment, everything is automatic.
 
@@ -45,7 +91,7 @@ Shiva multi-apps across Zomato and Swiggy. A single Aegis app gives him unified 
 
 ---
 
-## 3. Feature 1: Zone Locking — Shiva Claims His Territory
+## 4. Feature 1: Zone Locking — Shiva Claims His Territory
 
 ### The Story
 
@@ -128,7 +174,7 @@ Key columns on the `workers` table:
 
 ---
 
-## 4. Feature 2: Real-Time Metrics — Aegis Watches While Shiva Rides
+## 5. Feature 2: Real-Time Metrics — Aegis Watches While Shiva Rides
 
 It's 7:30 PM on a Tuesday. Shiva is on his 6th delivery of the evening. Dark clouds have been building over Chennai for the last hour. He doesn't know it yet, but the IMD just issued an orange alert — 52mm of rain has fallen in the last hour in Chennai-Central.
 
@@ -225,7 +271,7 @@ This keeps `worker_sessions.lat_last`, `lon_last`, and `last_ping` fresh — fee
 
 ---
 
-## 5. Feature 3: The 60-Second Auto-Trigger — The Money Moves on Its Own
+## 6. Feature 3: The 60-Second Auto-Trigger — The Money Moves on Its Own
 
 ### The Story
 
@@ -321,7 +367,7 @@ AND NOT EXISTS (
 
 ---
 
-## 6. Feature 4: Razorpay Integration — ₹480 Lands in Shiva's UPI
+## 7. Feature 4: Razorpay Integration — ₹480 Lands in Shiva's UPI
 
 ### The Story
 
@@ -415,7 +461,7 @@ Body: { "payout_id": 42, "worker_id": "W001", "amount": 480.0, "upi_id": "shiva@
 
 ---
 
-## 7. Feature 5: Admin Scenario Simulation — Testing Shiva's World
+## 8. Feature 5: Admin Scenario Simulation — Testing Shiva's World
 
 ### The Story
 
@@ -490,7 +536,7 @@ app.get('/api/risk-data', async (req, res) => {
 
 ---
 
-## 8. Parametric Trigger System
+## 9. Parametric Trigger System
 
 A payout fires only when **both gates pass**. No exceptions.
 
@@ -514,7 +560,7 @@ A payout fires only when **both gates pass**. No exceptions.
 
 ---
 
-## 9. Fraud Detection & Anti-Spoofing
+## 10. Fraud Detection & Anti-Spoofing
 
 ### The Story — Why Murugan's Claim Was Held
 
@@ -578,7 +624,7 @@ A flagged claim is **always held, never silently rejected**. Workers can appeal 
 
 ---
 
-## 10. System Architecture
+## 11. System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -610,7 +656,7 @@ A flagged claim is **always held, never silently rejected**. Workers can appeal 
 
 ---
 
-## 11. Tech Stack
+## 12. Tech Stack
 
 | Layer | Technology | Why |
 |---|---|---|
@@ -627,7 +673,9 @@ A flagged claim is **always held, never silently rejected**. Workers can appeal 
 | Auth | JWT Bearer Tokens | Secure session handling |
 
 ---
-## 12. Database Schema and Entity Relationships
+
+## 13. Database Schema and Entity Relationships
+
 ```mermaid
 erDiagram
   workers {
@@ -826,8 +874,9 @@ erDiagram
   claims ||--o{ transactions : "linked to"
 ```
 
+---
 
-## 13. Running the Project
+## 14. Running the Project
 
 ### Prerequisites
 
@@ -893,7 +942,7 @@ docker compose down -v                  # Full reset including database
 
 ---
 
-## 14. Team
+## 15. Team
 
 > **Team Name: Zero Noise Crew**
 
