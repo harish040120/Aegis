@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 // ─── API ────────────────────────────────────────────────────────────────────
 class ApiConfig {
-  static const String baseUrl = 'http://localhost:8010/api/v1';
+  static const String baseUrl = 'https://aegis-model-backend.onrender.com/api/v1';
   static const Duration timeout = Duration(seconds: 15);
 }
 
